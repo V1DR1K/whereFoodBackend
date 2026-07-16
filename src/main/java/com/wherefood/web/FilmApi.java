@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 record PlatformRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String icon, boolean active) {}
 record PlatformDto(Long id, String name, String icon, boolean active) {}
-record FilmRequest(@NotBlank @Size(max = 200) String title, @Size(max = 200) String originalTitle, @Size(max = 3000) String synopsis, LocalDate releaseDate, @Size(max = 300) String posterPath, List<@Size(max = 80) String> genres, Long platformId) {}
+record FilmRequest(@NotBlank @Size(max = 200) String title, @Size(max = 200) String originalTitle, @Size(max = 3000) String synopsis, LocalDate releaseDate, @Size(max = 300) String posterPath, LocalDate watchedOn, List<@Size(max = 80) String> genres, Long platformId) {}
 record FilmReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment, LocalDate watchedOn) {}
 record FilmGenreOptionRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String emoji) {}
 record FilmGenreOptionDto(Long id, String name, String emoji) {}
@@ -96,7 +96,7 @@ public class FilmApi {
   return new FilmDto(film.id, film.title, film.originalTitle, film.synopsis, film.releaseDate, photo == null ? posterUrl(film.posterPath) : photoUrl(film.id, false), photo == null ? null : photoUrl(film.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, film.genres.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, film.createdAt);
  }
  private void apply(Film film, FilmRequest request) {
-  film.title = request.title().trim(); film.originalTitle = blankToNull(request.originalTitle()); film.synopsis = blankToNull(request.synopsis()); film.releaseDate = request.releaseDate(); film.posterPath = blankToNull(request.posterPath());
+  film.title = request.title().trim(); film.originalTitle = blankToNull(request.originalTitle()); film.synopsis = blankToNull(request.synopsis()); film.releaseDate = request.releaseDate(); film.posterPath = blankToNull(request.posterPath()); if (request.watchedOn() != null) film.lastWatchedOn = request.watchedOn();
   film.platform = request.platformId() == null ? null : platforms.findById(request.platformId()).orElseThrow(() -> notFound("Plataforma"));
   film.genres.clear(); if (request.genres() != null) request.genres().stream().map(String::trim).filter(value -> !value.isBlank()).limit(12).forEach(film.genres::add);
  }

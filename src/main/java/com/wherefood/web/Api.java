@@ -51,9 +51,9 @@ public class Api {
  @PostMapping("/highlight-tags") @PreAuthorize("hasRole('ADMIN')") HighlightTagDto addTag(@RequestBody @jakarta.validation.Valid HighlightTagRequest request) { HighlightTag tag = new HighlightTag(); apply(tag, request); return tag(highlightTags.save(tag)); }
  @PutMapping("/highlight-tags/{id}") @PreAuthorize("hasRole('ADMIN')") HighlightTagDto updateTag(@PathVariable Long id, @RequestBody @jakarta.validation.Valid HighlightTagRequest request) { HighlightTag tag = highlightTags.findById(id).orElseThrow(() -> notFound("Etiqueta")); apply(tag, request); return tag(highlightTags.save(tag)); }
 
- @GetMapping("/places") Slice<PlaceDto> list(@RequestParam(required = false) Long categoryId, @RequestParam(required = false) PlaceStatus status, @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "12") int size) {
+ @GetMapping("/places") Slice<PlaceDto> list(@RequestParam(required = false) Long categoryId, @RequestParam(required = false) Long highlightTagId, @RequestParam(required = false) PlaceStatus status, @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "12") int size) {
   int limit = Math.max(1, Math.min(size, 30));
-  List<Place> candidates = places.findAll().stream().filter(place -> categoryId == null || place.category.id.equals(categoryId)).filter(place -> status == null || place.status == status).toList();
+  List<Place> candidates = places.findAll().stream().filter(place -> categoryId == null || place.category.id.equals(categoryId)).filter(place -> highlightTagId == null || place.highlightTags.stream().anyMatch(tag -> tag.id.equals(highlightTagId))).filter(place -> status == null || place.status == status).toList();
   List<Long> candidateIds = candidates.stream().map(place -> place.id).toList();
   Map<Long, PlaceMetric> metrics = metrics(candidateIds);
   Map<Long, VenueMetric> venueMetrics = venueMetrics(candidateIds);
