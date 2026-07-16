@@ -72,5 +72,6 @@ public class PhotoStorage {
  }
 
  public String url(String base64) { return base64 == null ? null : "data:image/webp;base64," + base64; }
+ public byte[] bytes(String base64) { return Base64.getDecoder().decode(base64); }
  private record ImageData(String image,String thumbnail,int width,int height) {}
 }
