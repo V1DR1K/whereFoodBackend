@@ -22,6 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: appleboy/scp-action@v0.1.7
-        with: {host: '${{ secrets.VPS_HOST }}', username: '${{ secrets.VPS_USER }}', key: '${{ secrets.VPS_SSH_KEY }}', source: 'compose.yml', target: '/opt/whatplan'}
+        with: {host: '${{ secrets.VPS_HOST }}', username: '${{ secrets.VPS_USER }}', key: '${{ secrets.VPS_SSH_KEY }}', source: 'compose.yml', target: '/opt/wherefood'}
       - uses: appleboy/ssh-action@v1.2.0
-        with: {host: '${{ secrets.VPS_HOST }}', username: '${{ secrets.VPS_USER }}', key: '${{ secrets.VPS_SSH_KEY }}', script: 'docker compose -p wherefood -f /opt/wherefood/compose.yml down --remove-orphans && cd /opt/whatplan && docker compose -p whatplan pull && docker compose -p whatplan up -d --remove-orphans'}
+        with: {host: '${{ secrets.VPS_HOST }}', username: '${{ secrets.VPS_USER }}', key: '${{ secrets.VPS_SSH_KEY }}', script: 'cd /opt/wherefood && docker compose -p wherefood pull && docker compose -p wherefood up -d --remove-orphans'}
