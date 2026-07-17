@@ -63,8 +63,9 @@ public final class Repositories {
  }
 
  public interface FilmGenreOptions extends JpaRepository<FilmGenreOption, Long> {
-  List<FilmGenreOption> findAllByOrderByNameAsc();
- }
+   List<FilmGenreOption> findAllByOrderByNameAsc();
+   List<FilmGenreOption> findAllByNameIn(Collection<String> names);
+  }
 
  public interface Films extends JpaRepository<Film, Long> {
   @Override @EntityGraph(attributePaths = {"platform", "createdBy", "genres"}) List<Film> findAll();

@@ -42,14 +42,16 @@ public class FilmApi {
  @GetMapping("/watch-platforms/all") @PreAuthorize("hasRole('ADMIN')") List<PlatformDto> allPlatforms() { return platforms.findAllByOrderByNameAsc().stream().map(FilmApi::platform).toList(); }
  @PostMapping("/watch-platforms") @PreAuthorize("hasRole('ADMIN')") PlatformDto addPlatform(@RequestBody @Valid PlatformRequest request) { WatchPlatform value = new WatchPlatform(); apply(value, request); value.createdAt = Instant.now(); return platform(platforms.save(value)); }
  @PutMapping("/watch-platforms/{id}") @PreAuthorize("hasRole('ADMIN')") PlatformDto updatePlatform(@PathVariable Long id, @RequestBody @Valid PlatformRequest request) { WatchPlatform value = platforms.findById(id).orElseThrow(() -> notFound("Plataforma")); apply(value, request); return platform(platforms.save(value)); }
- @GetMapping("/film-genres") List<FilmGenreOptionDto> genres() { return genreOptions.findAllByOrderByNameAsc().stream().map(FilmApi::genre).toList(); }
- @PostMapping("/film-genres") @PreAuthorize("hasRole('ADMIN')") FilmGenreOptionDto addGenre(@RequestBody @Valid FilmGenreOptionRequest request) { FilmGenreOption value = new FilmGenreOption(); value.name = request.name().trim(); value.emoji = request.emoji().trim(); value.createdAt = Instant.now(); return genre(genreOptions.save(value)); }
+  @GetMapping("/film-genres") List<FilmGenreOptionDto> genres() { return genreOptions.findAllByOrderByNameAsc().stream().map(FilmApi::genre).toList(); }
+  @PostMapping("/film-genres") @PreAuthorize("hasRole('ADMIN')") FilmGenreOptionDto addGenre(@RequestBody @Valid FilmGenreOptionRequest request) { FilmGenreOption value = new FilmGenreOption(); apply(value, request); value.createdAt = Instant.now(); return genre(genreOptions.save(value)); }
+  @PutMapping("/film-genres/{id}") @PreAuthorize("hasRole('ADMIN')") FilmGenreOptionDto updateGenre(@PathVariable Long id, @RequestBody @Valid FilmGenreOptionRequest request) { FilmGenreOption value = genreOptions.findById(id).orElseThrow(() -> notFound("Género")); apply(value, request); return genre(genreOptions.save(value)); }
+  @DeleteMapping("/film-genres/{id}") @PreAuthorize("hasRole('ADMIN')") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteGenre(@PathVariable Long id) { genreOptions.delete(genreOptions.findById(id).orElseThrow(() -> notFound("Género"))); }
 
  @GetMapping("/films") List<FilmDto> list(@RequestParam(required = false) String genre, @RequestParam(required = false) Long platformId, @RequestParam(required = false) Boolean watched) {
   return films.findAll().stream()
     .filter(film -> platformId == null || (film.platform != null && film.platform.id.equals(platformId)))
     .filter(film -> watched == null || watched == (film.watchedCount > 0))
-    .filter(film -> genre == null || genre.isBlank() || film.genres.stream().anyMatch(value -> value.equalsIgnoreCase(genre)))
+    .filter(film -> genre == null || genre.isBlank() || film.genres.stream().anyMatch(value -> value.name.equalsIgnoreCase(genre)))
     .sorted(Comparator.comparing((Film film) -> film.updatedAt).reversed())
     .map(this::film).toList();
  }
@@ -93,19 +95,23 @@ public class FilmApi {
  private FilmDto film(Film film) {
   List<FilmReviewDto> filmReviews = reviews.findByFilmIdOrderByAuthorUsername(film.id).stream().map(FilmApi::review).toList();
   FilmPhoto photo = filmPhotos.findByFilmId(film.id).orElse(null);
-  return new FilmDto(film.id, film.title, film.originalTitle, film.synopsis, film.releaseDate, photo == null ? posterUrl(film.posterPath) : photoUrl(film.id, false), photo == null ? null : photoUrl(film.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, film.genres.stream().sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, film.createdAt);
+   return new FilmDto(film.id, film.title, film.originalTitle, film.synopsis, film.releaseDate, photo == null ? posterUrl(film.posterPath) : photoUrl(film.id, false), photo == null ? null : photoUrl(film.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, film.genres.stream().map(value -> value.name).sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, film.createdAt);
  }
  private void apply(Film film, FilmRequest request) {
   film.title = request.title().trim(); film.originalTitle = blankToNull(request.originalTitle()); film.synopsis = blankToNull(request.synopsis()); film.releaseDate = request.releaseDate(); film.posterPath = blankToNull(request.posterPath()); if (request.watchedOn() != null) film.lastWatchedOn = request.watchedOn();
   film.platform = request.platformId() == null ? null : platforms.findById(request.platformId()).orElseThrow(() -> notFound("Plataforma"));
-  film.genres.clear(); if (request.genres() != null) request.genres().stream().map(String::trim).filter(value -> !value.isBlank()).limit(12).forEach(film.genres::add);
+   Set<String> names = request.genres() == null ? Set.of() : request.genres().stream().map(String::trim).filter(value -> !value.isBlank()).limit(12).collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+   List<FilmGenreOption> selected = names.isEmpty() ? List.of() : genreOptions.findAllByNameIn(names);
+   if (selected.size() != names.size()) throw notFound("Género");
+   film.genres.clear(); film.genres.addAll(selected);
  }
   private static String posterUrl(String posterPath) { return posterPath; }
   private static String photoUrl(Long filmId, boolean thumbnail) { return "/films/" + filmId + "/photo" + (thumbnail ? "?thumbnail=true" : ""); }
   private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
   private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }
- private static PlatformDto platform(WatchPlatform value) { return new PlatformDto(value.id, value.name, value.icon, value.active); }
- private static FilmGenreOptionDto genre(FilmGenreOption value) { return new FilmGenreOptionDto(value.id, value.name, value.emoji); }
+  private static PlatformDto platform(WatchPlatform value) { return new PlatformDto(value.id, value.name, value.icon, value.active); }
+  private static FilmGenreOptionDto genre(FilmGenreOption value) { return new FilmGenreOptionDto(value.id, value.name, value.emoji); }
+  private static void apply(FilmGenreOption value, FilmGenreOptionRequest request) { value.name = request.name().trim(); value.emoji = request.emoji().trim(); }
   private static FilmReviewDto review(FilmReview value) { return new FilmReviewDto(value.author.username, value.rating, value.comment, value.watchedOn, Map.copyOf(value.metrics)); }
  private static void apply(WatchPlatform value, PlatformRequest request) { value.name = request.name().trim(); value.icon = request.icon().trim(); value.active = request.active(); }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
