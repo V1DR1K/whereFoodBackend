@@ -80,8 +80,15 @@ public class FilmApi {
     review.rating = request.rating(); review.comment = emptyToNull(request.comment()); review.watchedOn = watchedOn; if (request.metrics() != null) review.metrics.putAll(request.metrics()); review.updatedAt = Instant.now();
    film.watchedCount++; film.lastWatchedOn = watchedOn;
    film.updatedAt = Instant.now(); films.save(film);
-  return review(reviews.save(review));
- }
+   return review(reviews.save(review));
+  }
+
+  @PutMapping("/films/{filmId}/reviews/{reviewId}") @Transactional FilmReviewDto updateReview(@PathVariable Long filmId, @PathVariable Long reviewId, @RequestBody @Valid FilmReviewRequest request, @AuthenticationPrincipal User author) {
+   FilmReview review = reviews.findById(reviewId).filter(value -> value.film.id.equals(filmId)).orElseThrow(() -> notFound("Reseña"));
+   if (!review.author.id.equals(author.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+   review.rating = request.rating(); review.comment = emptyToNull(request.comment()); review.watchedOn = request.watchedOn() == null ? review.watchedOn : request.watchedOn(); review.metrics.clear(); if (request.metrics() != null) review.metrics.putAll(request.metrics()); review.updatedAt = Instant.now();
+   return review(reviews.save(review));
+  }
 
  private Film findFilm(Long id) { return films.findDetailedById(id).orElseThrow(() -> notFound("Película")); }
  private FilmDto film(Film film) {
