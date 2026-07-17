@@ -2,6 +2,7 @@ package com.wherefood.domain;
 
 import jakarta.persistence.*;
 import java.time.*;
+import java.util.*;
 
 @Entity
 @Table(name = "film_reviews", uniqueConstraints = @UniqueConstraint(columnNames = {"film_id", "author_id"}))
@@ -11,6 +12,11 @@ public class FilmReview {
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "author_id") public User author;
  @Column(nullable = false) public short rating;
  public String comment;
+ @ElementCollection
+ @CollectionTable(name = "film_review_metrics", joinColumns = @JoinColumn(name = "review_id"))
+ @MapKeyColumn(name = "metric_key")
+ @Column(name = "level", nullable = false)
+ public Map<String, Short> metrics = new LinkedHashMap<>();
  public LocalDate watchedOn;
  public Instant createdAt;
  public Instant updatedAt;

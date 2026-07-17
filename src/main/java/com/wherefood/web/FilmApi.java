@@ -17,11 +17,11 @@ import org.springframework.web.server.ResponseStatusException;
 record PlatformRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String icon, boolean active) {}
 record PlatformDto(Long id, String name, String icon, boolean active) {}
 record FilmRequest(@NotBlank @Size(max = 200) String title, @Size(max = 200) String originalTitle, @Size(max = 3000) String synopsis, LocalDate releaseDate, @Size(max = 300) String posterPath, LocalDate watchedOn, List<@Size(max = 80) String> genres, Long platformId) {}
-record FilmReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment, LocalDate watchedOn) {}
+record FilmReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment, LocalDate watchedOn, Map<@NotBlank @Pattern(regexp = "[a-z_]{1,80}") String, @NotNull @Min(1) @Max(5) Short> metrics) {}
 record FilmGenreOptionRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String emoji) {}
 record FilmGenreOptionDto(Long id, String name, String emoji) {}
 record WatchCountRequest(@Min(-100) @Max(100) int delta, LocalDate watchedOn) {}
-record FilmReviewDto(String author, short rating, String comment, LocalDate watchedOn) {}
+record FilmReviewDto(String author, short rating, String comment, LocalDate watchedOn, Map<String, Short> metrics) {}
 record FilmDto(Long id, String title, String originalTitle, String synopsis, LocalDate releaseDate, String posterUrl, String thumbnailUrl, Integer posterWidth, Integer posterHeight, List<String> genres, PlatformDto platform, int watchedCount, LocalDate lastWatchedOn, String author, List<FilmReviewDto> reviews, Instant createdAt) {}
 
 @RestController
@@ -84,7 +84,7 @@ public class FilmApi {
  @PutMapping("/films/{id}/review") @Transactional FilmReviewDto saveReview(@PathVariable Long id, @RequestBody @Valid FilmReviewRequest request, @AuthenticationPrincipal User author) {
   Film film = findFilm(id);
   FilmReview review = reviews.findByFilmIdAndAuthorId(id, author.id).orElseGet(() -> { FilmReview value = new FilmReview(); value.film = film; value.author = author; value.createdAt = Instant.now(); return value; });
-  review.rating = request.rating(); review.comment = blankToNull(request.comment()); review.watchedOn = request.watchedOn(); review.updatedAt = Instant.now();
+   review.rating = request.rating(); review.comment = emptyToNull(request.comment()); review.watchedOn = request.watchedOn(); if (request.metrics() != null) { review.metrics.clear(); review.metrics.putAll(request.metrics()); } review.updatedAt = Instant.now();
   film.updatedAt = Instant.now(); films.save(film);
   return review(reviews.save(review));
  }
@@ -100,12 +100,13 @@ public class FilmApi {
   film.platform = request.platformId() == null ? null : platforms.findById(request.platformId()).orElseThrow(() -> notFound("Plataforma"));
   film.genres.clear(); if (request.genres() != null) request.genres().stream().map(String::trim).filter(value -> !value.isBlank()).limit(12).forEach(film.genres::add);
  }
- private static String posterUrl(String posterPath) { return posterPath; }
- private static String photoUrl(Long filmId, boolean thumbnail) { return "/films/" + filmId + "/photo" + (thumbnail ? "?thumbnail=true" : ""); }
- private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+  private static String posterUrl(String posterPath) { return posterPath; }
+  private static String photoUrl(Long filmId, boolean thumbnail) { return "/films/" + filmId + "/photo" + (thumbnail ? "?thumbnail=true" : ""); }
+  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+  private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }
  private static PlatformDto platform(WatchPlatform value) { return new PlatformDto(value.id, value.name, value.icon, value.active); }
  private static FilmGenreOptionDto genre(FilmGenreOption value) { return new FilmGenreOptionDto(value.id, value.name, value.emoji); }
- private static FilmReviewDto review(FilmReview value) { return new FilmReviewDto(value.author.username, value.rating, value.comment, value.watchedOn); }
+  private static FilmReviewDto review(FilmReview value) { return new FilmReviewDto(value.author.username, value.rating, value.comment, value.watchedOn, Map.copyOf(value.metrics)); }
  private static void apply(WatchPlatform value, PlatformRequest request) { value.name = request.name().trim(); value.icon = request.icon().trim(); value.active = request.active(); }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
  private static Film owned(Film film, User user) { if (!film.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return film; }
