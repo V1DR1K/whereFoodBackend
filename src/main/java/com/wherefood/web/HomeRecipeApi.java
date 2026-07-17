@@ -15,7 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 record HomeRecipeIngredientRequest(@NotBlank @Size(max = 160) String name, @Min(0) @Max(100000) int grams) {}
-record HomeRecipeRequest(@NotNull Home home, @NotBlank @Size(max = 160) String name, @Size(max = 1000) String recipeUrl, @NotNull LocalDate preparedOn, @NotNull MealType mealType, @NotEmpty List<@Valid HomeRecipeIngredientRequest> ingredients) {}
+record HomeRecipeRequest(@NotNull Home home, @NotBlank @Size(max = 160) String name, @Size(max = 1000) String recipeUrl, @NotNull LocalDate preparedOn, @NotNull MealType mealType, @NotEmpty List<@Valid HomeRecipeIngredientRequest> ingredients, Long copyPhotoFromId) {}
 record HomeRecipeIngredientDto(String name, int grams) {}
 record HomeRecipeDto(Long id, Home home, String name, String recipeUrl, LocalDate preparedOn, MealType mealType, List<HomeRecipeIngredientDto> ingredients, String author, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, Instant createdAt) {}
 
@@ -36,9 +36,10 @@ public class HomeRecipeApi {
   return values.stream().map(recipe -> recipe(recipe, photoMap.get(recipe.id))).toList();
  }
 
- @PostMapping @ResponseStatus(HttpStatus.CREATED) HomeRecipeDto add(@RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
+ @PostMapping @ResponseStatus(HttpStatus.CREATED) @Transactional HomeRecipeDto add(@RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
   HomeRecipe recipe = new HomeRecipe(); recipe.author = author; apply(recipe, request); recipe.createdAt = recipe.updatedAt = Instant.now();
-  return recipe(recipes.save(recipe), null);
+  HomeRecipe saved = recipes.save(recipe); HomeRecipePhoto photo = request.copyPhotoFromId() == null ? null : photos.findByRecipeId(request.copyPhotoFromId()).map(source -> copyPhoto(saved, source)).orElse(null);
+  return recipe(saved, photo);
  }
 
  @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
@@ -71,6 +72,10 @@ public class HomeRecipeApi {
  }
  private static HomeRecipeDto recipe(HomeRecipe value, HomeRecipePhoto photo) {
   return new HomeRecipeDto(value.id, value.home, value.name, value.recipeUrl, value.preparedOn, value.mealType, value.ingredients.stream().map(ingredient -> new HomeRecipeIngredientDto(ingredient.name, ingredient.grams)).toList(), value.author.username, photo == null ? null : "/home-recipes/" + value.id + "/photo", photo == null ? null : "/home-recipes/" + value.id + "/photo?thumbnail=true", photo == null ? null : photo.width, photo == null ? null : photo.height, value.createdAt);
+ }
+ private HomeRecipePhoto copyPhoto(HomeRecipe recipe, HomeRecipePhoto source) {
+  HomeRecipePhoto copy = new HomeRecipePhoto(); copy.recipe = recipe; copy.imageBase64 = source.imageBase64; copy.thumbnailBase64 = source.thumbnailBase64; copy.width = source.width; copy.height = source.height; copy.createdAt = Instant.now();
+  return photos.save(copy);
  }
  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
  private static HomeRecipe owned(HomeRecipe recipe, User author) { if (!recipe.author.id.equals(author.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return recipe; }
