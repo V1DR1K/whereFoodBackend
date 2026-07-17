@@ -5,7 +5,7 @@ import java.time.*;
 import java.util.*;
 
 @Entity
-@Table(name = "film_reviews", uniqueConstraints = @UniqueConstraint(columnNames = {"film_id", "author_id"}))
+@Table(name = "film_reviews")
 public class FilmReview {
  @Id @GeneratedValue(strategy = GenerationType.IDENTITY) public Long id;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "film_id") public Film film;

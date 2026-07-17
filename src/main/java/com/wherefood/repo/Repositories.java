@@ -72,8 +72,7 @@ public final class Repositories {
   @EntityGraph(attributePaths = {"platform", "createdBy", "genres"}) @Query("select f from Film f where f.id=:id") Optional<Film> findDetailedById(@Param("id") Long id);
  }
 
- public interface FilmReviews extends JpaRepository<FilmReview, Long> {
-   @EntityGraph(attributePaths = {"author", "metrics"}) List<FilmReview> findByFilmIdOrderByAuthorUsername(Long filmId);
-  Optional<FilmReview> findByFilmIdAndAuthorId(Long filmId, Long authorId);
- }
+  public interface FilmReviews extends JpaRepository<FilmReview, Long> {
+    @EntityGraph(attributePaths = {"author", "metrics"}) List<FilmReview> findByFilmIdOrderByWatchedOnDescIdDesc(Long filmId);
+  }
 }
