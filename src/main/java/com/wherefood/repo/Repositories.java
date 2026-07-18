@@ -32,14 +32,19 @@ public final class Repositories {
   Long getPlaceId(); Double getVenueAverage();
  }
 
- public interface Items extends JpaRepository<Item, Long> {
-  @Override @EntityGraph(attributePaths = {"author", "place"}) Optional<Item> findById(Long id);
-  @EntityGraph(attributePaths = "author") List<Item> findByPlaceIdAndVisitDateAndDeletedAtIsNullOrderByIdDesc(Long placeId, LocalDate visitDate);
-  @Query("select distinct i.visitDate from Item i where i.place.id=:placeId and i.deletedAt is null order by i.visitDate desc") List<LocalDate> findActiveVisitDates(@Param("placeId") Long placeId);
-  @Query("select i.place.id as placeId, count(i) as itemCount, avg(i.taste) as tasteAverage, avg(i.price) as priceAverage from Item i where i.place.id in :ids and i.deletedAt is null group by i.place.id") List<PlaceMetric> metrics(@Param("ids") Collection<Long> ids);
- }
+  public interface PlaceVisits extends JpaRepository<PlaceVisit, Long> {
+   @EntityGraph(attributePaths = {"place", "createdBy"}) List<PlaceVisit> findByPlaceIdOrderByVisitedOnDescIdDesc(Long placeId);
+   @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findByPlaceIdAndVisitedOn(Long placeId, LocalDate visitedOn);
+   @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findDetailedById(Long id);
+  }
 
- public interface Photos extends JpaRepository<ItemPhoto, Long> {
+  public interface Items extends JpaRepository<Item, Long> {
+   @Override @EntityGraph(attributePaths = {"createdBy", "visit", "visit.place", "reviews", "reviews.author"}) Optional<Item> findById(Long id);
+   @EntityGraph(attributePaths = {"createdBy", "reviews", "reviews.author"}) List<Item> findByVisitIdAndDeletedAtIsNullOrderByIdDesc(Long visitId);
+   @Query("select i.visit.place.id as placeId, count(distinct i) as itemCount, avg(review.taste) as tasteAverage, avg(review.price) as priceAverage from Item i left join i.reviews review where i.visit.place.id in :ids and i.deletedAt is null group by i.visit.place.id") List<PlaceMetric> metrics(@Param("ids") Collection<Long> ids);
+  }
+
+  public interface Photos extends JpaRepository<ItemPhoto, Long> {
   Optional<ItemPhoto> findByItemId(Long id);
   @EntityGraph(attributePaths = "item") List<ItemPhoto> findByItemIdIn(Collection<Long> ids);
  }
@@ -66,6 +71,10 @@ public final class Repositories {
  public interface FilmGenreOptions extends JpaRepository<FilmGenreOption, Long> {
    List<FilmGenreOption> findAllByOrderByNameAsc();
    List<FilmGenreOption> findAllByNameIn(Collection<String> names);
+  }
+
+  public interface ItemReviews extends JpaRepository<ItemReview, Long> {
+   Optional<ItemReview> findByItemIdAndAuthorId(Long itemId, Long authorId);
   }
 
  public interface Films extends JpaRepository<Film, Long> {
