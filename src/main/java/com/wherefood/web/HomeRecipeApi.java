@@ -36,23 +36,28 @@ public class HomeRecipeApi {
   return values.stream().map(recipe -> recipe(recipe, photoMap.get(recipe.id))).toList();
  }
 
+ @GetMapping("/{id}") HomeRecipeDto get(@PathVariable Long id) {
+  HomeRecipe recipe = findRecipe(id);
+  return recipe(recipe, photos.findByRecipeId(id).orElse(null));
+ }
+
  @PostMapping @ResponseStatus(HttpStatus.CREATED) @Transactional HomeRecipeDto add(@RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
   HomeRecipe recipe = new HomeRecipe(); recipe.author = author; apply(recipe, request); recipe.createdAt = recipe.updatedAt = Instant.now();
   HomeRecipe saved = recipes.save(recipe); HomeRecipePhoto photo = request.copyPhotoFromId() == null ? null : photos.findByRecipeId(request.copyPhotoFromId()).map(source -> copyPhoto(saved, source)).orElse(null);
   return recipe(saved, photo);
  }
 
- @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
-  HomeRecipe recipe = owned(findRecipe(id), author); apply(recipe, request); recipe.updatedAt = Instant.now();
+ @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request) {
+  HomeRecipe recipe = findRecipe(id); apply(recipe, request); recipe.updatedAt = Instant.now();
   return recipe(recipes.save(recipe), photos.findByRecipeId(id).orElse(null));
  }
 
- @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id, @AuthenticationPrincipal User author) {
-  recipes.delete(owned(findRecipe(id), author));
+ @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id) {
+  recipes.delete(findRecipe(id));
  }
 
- @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional HomeRecipeDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException {
-  HomeRecipe recipe = owned(findRecipe(id), author); photos.findByRecipeId(id).ifPresent(photos::delete); photos.flush(); HomeRecipePhoto photo = photos.save(storage.store(recipe, file));
+ @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional HomeRecipeDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file) throws IOException {
+  HomeRecipe recipe = findRecipe(id); photos.findByRecipeId(id).ifPresent(photos::delete); photos.flush(); HomeRecipePhoto photo = photos.save(storage.store(recipe, file));
   return recipe(recipe, photo);
  }
 
@@ -78,6 +83,5 @@ public class HomeRecipeApi {
   return photos.save(copy);
  }
  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
- private static HomeRecipe owned(HomeRecipe recipe, User author) { if (!recipe.author.id.equals(author.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return recipe; }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
 }
