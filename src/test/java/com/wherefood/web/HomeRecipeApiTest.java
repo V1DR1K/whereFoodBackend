@@ -14,6 +14,7 @@ import com.wherefood.domain.User;
 import com.wherefood.repo.Repositories.HomeRecipePhotos;
 import com.wherefood.repo.Repositories.HomeRecipeReviews;
 import com.wherefood.repo.Repositories.HomeRecipes;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -73,5 +74,30 @@ class HomeRecipeApiTest {
     assertEquals("avril", result.author());
     assertEquals(5, result.rating());
     verify(reviews).save(any(HomeRecipeReview.class));
+  }
+
+  @Test
+  void returnsReviewsWithTheRecipe() {
+    HomeRecipes recipes = mock(HomeRecipes.class);
+    HomeRecipePhotos photos = mock(HomeRecipePhotos.class);
+    HomeRecipeReviews reviews = mock(HomeRecipeReviews.class);
+    User tomas = new User();
+    tomas.username = "tomas";
+    HomeRecipe recipe = new HomeRecipe();
+    recipe.id = 2L;
+    recipe.author = tomas;
+    HomeRecipeReview review = new HomeRecipeReview();
+    review.recipe = recipe;
+    review.author = tomas;
+    review.rating = 5;
+    review.updatedAt = Instant.parse("2026-07-21T17:24:00Z");
+    when(recipes.findById(2L)).thenReturn(Optional.of(recipe));
+    when(photos.findByRecipeId(2L)).thenReturn(Optional.empty());
+    when(reviews.findByRecipeIdInOrderByAuthorUsername(List.of(2L))).thenReturn(List.of(review));
+
+    HomeRecipeDto result = new HomeRecipeApi(recipes, photos, reviews, null).get(2L);
+
+    assertEquals(1, result.reviews().size());
+    assertEquals("tomas", result.reviews().getFirst().author());
   }
 }

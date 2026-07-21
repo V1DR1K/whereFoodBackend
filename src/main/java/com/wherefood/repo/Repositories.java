@@ -106,7 +106,7 @@ public final class Repositories {
   }
 
   public interface HomeRecipeReviews extends JpaRepository<HomeRecipeReview, Long> {
-   @EntityGraph(attributePaths = "author") @Query("select r from HomeRecipeReview r where r.recipe.id in :recipeIds order by r.recipe.id, r.author.username") List<HomeRecipeReview> findByRecipeIdInOrderByAuthorUsername(@Param("recipeIds") Collection<Long> recipeIds);
+   @EntityGraph(attributePaths = {"author", "recipe"}) @Query("select r from HomeRecipeReview r where r.recipe.id in :recipeIds order by r.recipe.id, r.author.username") List<HomeRecipeReview> findByRecipeIdInOrderByAuthorUsername(@Param("recipeIds") Collection<Long> recipeIds);
    @EntityGraph(attributePaths = "author") Optional<HomeRecipeReview> findByRecipeIdAndAuthorId(Long recipeId, Long authorId);
   }
 
