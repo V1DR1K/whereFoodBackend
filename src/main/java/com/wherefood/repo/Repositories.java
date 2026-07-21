@@ -101,8 +101,13 @@ public final class Repositories {
   }
 
   public interface HomeRecipePhotos extends JpaRepository<HomeRecipePhoto, Long> {
-    Optional<HomeRecipePhoto> findByRecipeId(Long recipeId);
-    @EntityGraph(attributePaths = "recipe") List<HomeRecipePhoto> findByRecipeIdIn(Collection<Long> recipeIds);
+   Optional<HomeRecipePhoto> findByRecipeId(Long recipeId);
+   @EntityGraph(attributePaths = "recipe") List<HomeRecipePhoto> findByRecipeIdIn(Collection<Long> recipeIds);
+  }
+
+  public interface HomeRecipeReviews extends JpaRepository<HomeRecipeReview, Long> {
+   @EntityGraph(attributePaths = "author") @Query("select r from HomeRecipeReview r where r.recipe.id in :recipeIds order by r.recipe.id, r.author.username") List<HomeRecipeReview> findByRecipeIdInOrderByAuthorUsername(@Param("recipeIds") Collection<Long> recipeIds);
+   @EntityGraph(attributePaths = "author") Optional<HomeRecipeReview> findByRecipeIdAndAuthorId(Long recipeId, Long authorId);
   }
 
   public interface WhyFunCategories extends JpaRepository<WhyFunCategory, Long> {
