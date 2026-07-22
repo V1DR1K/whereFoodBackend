@@ -90,9 +90,9 @@ public final class Repositories {
   }
 
   public interface FilmViews extends JpaRepository<FilmView, Long> {
-    List<FilmView> findByFilmIdOrderByWatchedOnDescIdDesc(Long filmId);
+    List<FilmView> findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(Long filmId);
     Optional<FilmView> findByIdAndFilmId(Long id, Long filmId);
-    Optional<FilmView> findByFilmIdAndWatchedOn(Long filmId, LocalDate watchedOn);
+    Optional<FilmView> findByFilmIdAndWatchedOnAndWatchedAt(Long filmId, LocalDate watchedOn, LocalTime watchedAt);
   }
 
   public interface HomeRecipes extends JpaRepository<HomeRecipe, Long> {

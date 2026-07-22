@@ -14,6 +14,8 @@ import com.wherefood.repo.Repositories.Films;
 import com.wherefood.repo.Repositories.FilmReviews;
 import com.wherefood.repo.Repositories.FilmViews;
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -30,12 +32,14 @@ class FilmApiTest {
     Film film = new Film();
     film.id = 42L;
     when(films.findDetailedById(42L)).thenReturn(Optional.of(film));
-    when(views.findByFilmIdAndWatchedOn(42L, LocalDate.of(2026, 7, 19))).thenReturn(Optional.empty());
-    when(views.save(any(FilmView.class))).thenAnswer(invocation -> { FilmView value = invocation.getArgument(0); value.id = 88L; return value; });
+    when(views.findByFilmIdAndWatchedOnAndWatchedAt(42L, LocalDate.of(2026, 7, 19), LocalTime.of(20, 30))).thenReturn(Optional.empty());
+    FilmView[] stored = new FilmView[1];
+    when(views.save(any(FilmView.class))).thenAnswer(invocation -> { FilmView value = invocation.getArgument(0); value.id = 88L; stored[0] = value; return value; });
+    when(views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(42L)).thenAnswer(invocation -> stored[0] == null ? List.of() : List.of(stored[0]));
 
     FilmViewDto result = new FilmApi(films, reviews, views, null, null, null, null, null).addView(
       42L,
-      new FilmViewRequest(LocalDate.of(2026, 7, 19)),
+      new FilmViewRequest(LocalDate.of(2026, 7, 19), LocalTime.of(20, 30)),
       tomas
     );
 

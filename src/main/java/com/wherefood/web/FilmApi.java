@@ -17,12 +17,12 @@ import org.springframework.web.server.ResponseStatusException;
 record PlatformRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String icon, boolean active) {}
 record PlatformDto(Long id, String name, String icon, boolean active) {}
 record FilmRequest(Long tmdbId, @Size(max = 200) String title, @Size(max = 200) String originalTitle, @Size(max = 3000) String synopsis, LocalDate releaseDate, @Size(max = 300) String posterPath, LocalDate watchedOn, List<@Size(max = 80) String> genres, Long platformId) {}
-record FilmViewRequest(@NotNull LocalDate watchedOn) {}
+record FilmViewRequest(@NotNull LocalDate watchedOn, @NotNull LocalTime watchedAt) {}
 record FilmReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment, LocalDate watchedOn, Map<@NotBlank @Pattern(regexp = "[a-z_]{1,80}") String, @NotNull @Min(1) @Max(5) Short> metrics) {}
 record FilmGenreOptionRequest(@NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String emoji) {}
 record FilmGenreOptionDto(Long id, String name, String emoji) {}
 record FilmReviewDto(Long id, String author, short rating, String comment, LocalDate watchedOn, Map<String, Short> metrics) {}
-record FilmViewDto(Long id, LocalDate watchedOn, List<FilmReviewDto> reviews) {}
+record FilmViewDto(Long id, LocalDate watchedOn, LocalTime watchedAt, String createdBy, List<FilmReviewDto> reviews) {}
 record FilmDto(Long id, Long tmdbId, String title, String originalTitle, String synopsis, LocalDate releaseDate, String posterUrl, String thumbnailUrl, Integer posterWidth, Integer posterHeight, List<String> genres, PlatformDto platform, int watchedCount, LocalDate lastWatchedOn, String author, List<FilmReviewDto> reviews, List<FilmViewDto> views, Instant createdAt, TmdbMovieDto tmdb) {}
 
 @RestController
@@ -71,17 +71,27 @@ public class FilmApi {
    apply(film, request); film.createdBy = author; film.createdAt = film.updatedAt = Instant.now();
    return film(films.save(film), true);
   }
-  @PutMapping("/films/{id}") FilmDto update(@PathVariable Long id, @RequestBody @Valid FilmRequest request) {
-   Film film = findFilm(id); assertAvailableTmdbId(request.tmdbId(), id); apply(film, request); film.updatedAt = Instant.now(); return film(films.save(film), true);
- }
- @DeleteMapping("/films/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id) { films.delete(findFilm(id)); }
+  @PutMapping("/films/{id}") FilmDto update(@PathVariable Long id, @RequestBody @Valid FilmRequest request, @AuthenticationPrincipal User author) {
+   Film film = owned(findFilm(id), author); assertAvailableTmdbId(request.tmdbId(), id); apply(film, request); film.updatedAt = Instant.now(); return film(films.save(film), true);
+  }
+  @DeleteMapping("/films/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id, @AuthenticationPrincipal User author) { films.delete(owned(findFilm(id), author)); }
  @PostMapping(value = "/films/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional FilmDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User user) throws java.io.IOException {
   Film film = owned(findFilm(id), user); filmPhotos.findByFilmId(id).ifPresent(filmPhotos::delete); filmPhotos.flush(); filmPhotos.save(storage.store(film, file)); return film(film);
  }
 
- @PostMapping("/films/{id}/views") @Transactional FilmViewDto addView(@PathVariable Long id, @RequestBody @Valid FilmViewRequest request, @AuthenticationPrincipal User author) {
-  return view(createView(findFilm(id), request.watchedOn(), author), List.of());
- }
+  @PostMapping("/films/{id}/views") @Transactional FilmViewDto addView(@PathVariable Long id, @RequestBody @Valid FilmViewRequest request, @AuthenticationPrincipal User author) {
+   return view(createView(findFilm(id), request, author), List.of());
+  }
+  @PutMapping("/films/{filmId}/views/{viewId}") @Transactional FilmViewDto updateView(@PathVariable Long filmId, @PathVariable Long viewId, @RequestBody @Valid FilmViewRequest request, @AuthenticationPrincipal User author) {
+   FilmView view = owned(findView(filmId, viewId), author);
+   validateViewMoment(request);
+   views.findByFilmIdAndWatchedOnAndWatchedAt(filmId, request.watchedOn(), request.watchedAt()).filter(other -> !other.id.equals(view.id)).ifPresent(other -> { throw conflict("Ya registraron una vista para esa fecha y hora"); });
+   view.watchedOn = request.watchedOn(); view.watchedAt = request.watchedAt();
+   FilmView saved = views.save(view); refreshWatchSummary(saved.film); return view(saved, reviews.findByFilmIdOrderByViewWatchedOnDescIdDesc(filmId).stream().filter(review -> review.view.id.equals(saved.id)).map(FilmApi::review).toList());
+  }
+  @DeleteMapping("/films/{filmId}/views/{viewId}") @ResponseStatus(HttpStatus.NO_CONTENT) @Transactional void deleteView(@PathVariable Long filmId, @PathVariable Long viewId, @AuthenticationPrincipal User author) {
+   FilmView view = owned(findView(filmId, viewId), author); Film film = view.film; views.delete(view); views.flush(); refreshWatchSummary(film);
+  }
 
  @PostMapping("/films/{filmId}/views/{viewId}/reviews") @Transactional FilmReviewDto addReview(@PathVariable Long filmId, @PathVariable Long viewId, @RequestBody @Valid FilmReviewRequest request, @AuthenticationPrincipal User author) {
   Film film = findFilm(filmId);
@@ -90,8 +100,8 @@ public class FilmApi {
 
  @PostMapping("/films/{id}/reviews") @Transactional FilmReviewDto saveLegacyReview(@PathVariable Long id, @RequestBody @Valid FilmReviewRequest request, @AuthenticationPrincipal User author) {
   Film film = findFilm(id);
-  LocalDate watchedOn = request.watchedOn() == null ? LocalDate.now() : request.watchedOn();
-  FilmView view = views.findByFilmIdAndWatchedOn(id, watchedOn).orElseGet(() -> createView(film, watchedOn, author));
+   LocalDate watchedOn = request.watchedOn() == null ? LocalDate.now() : request.watchedOn();
+   FilmView view = views.findByFilmIdAndWatchedOnAndWatchedAt(id, watchedOn, LocalTime.NOON).orElseGet(() -> createView(film, new FilmViewRequest(watchedOn, LocalTime.NOON), author));
   return saveReview(film, view, request, author);
  }
 
@@ -112,7 +122,7 @@ public class FilmApi {
    List<FilmReview> reviewValues = reviews.findByFilmIdOrderByViewWatchedOnDescIdDesc(film.id);
    List<FilmReviewDto> filmReviews = reviewValues.stream().map(FilmApi::review).toList();
    Map<Long, List<FilmReviewDto>> reviewsByView = reviewValues.stream().collect(java.util.stream.Collectors.groupingBy(review -> review.view.id, java.util.stream.Collectors.mapping(FilmApi::review, java.util.stream.Collectors.toList())));
-   List<FilmViewDto> filmViews = views.findByFilmIdOrderByWatchedOnDescIdDesc(film.id).stream().map(view -> view(view, reviewsByView.getOrDefault(view.id, List.of()))).toList();
+    List<FilmViewDto> filmViews = views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(film.id).stream().map(view -> view(view, reviewsByView.getOrDefault(view.id, List.of()))).toList();
    FilmPhoto photo = filmPhotos.findByFilmId(film.id).orElse(null);
    TmdbMovieDto catalog = catalog(film.tmdbId, detailedTmdb);
    return new FilmDto(film.id, film.tmdbId, film.title, film.originalTitle, film.synopsis, film.releaseDate, photo == null ? posterUrl(film.posterPath) : photoUrl(film.id, false), photo == null ? null : photoUrl(film.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, film.genres.stream().map(value -> value.name).sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, filmViews, film.createdAt, catalog);
@@ -149,12 +159,13 @@ public class FilmApi {
   private static PlatformDto platform(WatchPlatform value) { return new PlatformDto(value.id, value.name, value.icon, value.active); }
   private static FilmGenreOptionDto genre(FilmGenreOption value) { return new FilmGenreOptionDto(value.id, value.name, value.emoji); }
   private static void apply(FilmGenreOption value, FilmGenreOptionRequest request) { value.name = request.name().trim(); value.emoji = request.emoji().trim(); }
-  private FilmView createView(Film film, LocalDate watchedOn, User author) {
-   if (views.findByFilmIdAndWatchedOn(film.id, watchedOn).isPresent()) throw conflict("Ya registraron una vista para esa fecha");
-   FilmView view = new FilmView(); view.film = film; view.createdBy = author; view.watchedOn = watchedOn; view.createdAt = Instant.now();
-   FilmView saved = views.save(view); film.watchedCount++; if (film.lastWatchedOn == null || watchedOn.isAfter(film.lastWatchedOn)) film.lastWatchedOn = watchedOn; film.updatedAt = Instant.now(); films.save(film);
-   return saved;
-  }
+   private FilmView createView(Film film, FilmViewRequest request, User author) {
+    validateViewMoment(request);
+    if (views.findByFilmIdAndWatchedOnAndWatchedAt(film.id, request.watchedOn(), request.watchedAt()).isPresent()) throw conflict("Ya registraron una vista para esa fecha y hora");
+    FilmView view = new FilmView(); view.film = film; view.createdBy = author; view.watchedOn = request.watchedOn(); view.watchedAt = request.watchedAt(); view.createdAt = Instant.now();
+    FilmView saved = views.save(view); refreshWatchSummary(film);
+    return saved;
+   }
   private FilmReviewDto saveReview(Film film, FilmView view, FilmReviewRequest request, User author) {
    if (reviews.existsByViewIdAndAuthorId(view.id, author.id)) throw conflict("Ya dejaste tu reseña para esta vista");
    FilmReview review = new FilmReview(); review.film = film; review.view = view; review.author = author; review.createdAt = Instant.now();
@@ -162,10 +173,13 @@ public class FilmApi {
    return review(reviews.save(review));
   }
   private FilmView findView(Long filmId, Long viewId) { return views.findByIdAndFilmId(viewId, filmId).orElseThrow(() -> notFound("Vista")); }
-  private static FilmViewDto view(FilmView value, List<FilmReviewDto> reviews) { return new FilmViewDto(value.id, value.watchedOn, reviews); }
+   private static FilmViewDto view(FilmView value, List<FilmReviewDto> reviews) { return new FilmViewDto(value.id, value.watchedOn, value.watchedAt, value.createdBy.username, reviews); }
   private static FilmReviewDto review(FilmReview value) { return new FilmReviewDto(value.id, value.author.username, value.rating, value.comment, value.view.watchedOn, Map.copyOf(value.metrics)); }
  private static void apply(WatchPlatform value, PlatformRequest request) { value.name = request.name().trim(); value.icon = request.icon().trim(); value.active = request.active(); }
   private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
   private static ResponseStatusException conflict(String detail) { return new ResponseStatusException(HttpStatus.CONFLICT, detail); }
- private static Film owned(Film film, User user) { if (!film.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return film; }
+  private void refreshWatchSummary(Film film) { List<FilmView> values = views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(film.id); film.watchedCount = values.size(); film.lastWatchedOn = values.isEmpty() ? null : values.getFirst().watchedOn; film.updatedAt = Instant.now(); films.save(film); }
+  private static Film owned(Film film, User user) { if (!film.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return film; }
+  private static FilmView owned(FilmView view, User user) { if (!view.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return view; }
+  private static void validateViewMoment(FilmViewRequest request) { if (request.watchedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una vista no puede quedar en el futuro"); }
 }
