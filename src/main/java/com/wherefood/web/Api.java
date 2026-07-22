@@ -21,16 +21,16 @@ record CategoryDto(Long id, String name, String slug, String icon, boolean activ
 record HighlightTagRequest(@NotBlank String name, @NotBlank String emoji) {}
 record HighlightTagDto(Long id, String name, String emoji) {}
 record PlaceRequest(@NotBlank String name, String address, String sourceUrl, String mapsUrl, @NotNull Long categoryId, List<Long> tagIds) {}
-record VisitRequest(@NotNull LocalDate visitedOn) {}
+record VisitRequest(@NotNull LocalDate visitedOn, @NotNull LocalTime visitedAt) {}
 record ItemRequest(@NotBlank String name) {}
 record ItemReviewRequest(String comment, @Min(1) @Max(5) short taste, @Min(1) @Max(5) short price) {}
 record CreateItemRequest(@NotBlank String name) {}
-record PlaceReviewRequest(String comment, @Min(1) @Max(5) short location, @Min(1) @Max(5) short heating, @Min(1) @Max(5) short bathrooms, @Min(1) @Max(5) short exterior, @Min(1) @Max(5) short seating, @Min(1) @Max(5) short service, @Min(1) @Max(5) short ambiance) {}
-record PlaceReviewDto(String author, String comment, short location, short heating, short bathrooms, short exterior, short seating, short service, short ambiance) {}
+record PlaceReviewRequest(String comment, @Min(1) @Max(5) Short location, @Min(1) @Max(5) Short heating, @Min(1) @Max(5) Short bathrooms, @Min(1) @Max(5) Short exterior, @Min(1) @Max(5) Short seating, @Min(1) @Max(5) Short service, @Min(1) @Max(5) Short ambiance) {}
+record PlaceReviewDto(String author, String comment, Short location, Short heating, Short bathrooms, Short exterior, Short seating, Short service, Short ambiance) {}
 record ItemReviewDto(String author, String comment, short taste, short price, Instant createdAt, Instant updatedAt) {}
 record ItemDto(Long id, String name, String createdBy, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<ItemReviewDto> reviews, Instant createdAt) {}
-record PlaceVisitSummaryDto(Long id, LocalDate visitedOn, Instant createdAt) {}
-record PlaceVisitDto(Long id, Long placeId, LocalDate visitedOn, String createdBy, List<ItemDto> items, Instant createdAt) {}
+record PlaceVisitSummaryDto(Long id, LocalDate visitedOn, LocalTime visitedAt, String createdBy, Instant createdAt) {}
+record PlaceVisitDto(Long id, Long placeId, LocalDate visitedOn, LocalTime visitedAt, String createdBy, List<ItemDto> items, Instant createdAt) {}
 record PlaceDto(Long id, String name, String address, String sourceUrl, String mapsUrl, PlaceStatus status, CategoryDto category, List<HighlightTagDto> tags, String author, double rating, double tasteAverage, double priceAverage, double venueAverage, long itemCount, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<PlaceReviewDto> reviews, Instant createdAt) {}
 record Slice<T>(List<T> content, Long nextCursor) {}
 
@@ -76,7 +76,9 @@ public class Api {
  @PutMapping("/places/{id}") PlaceDto editPlace(@PathVariable Long id, @RequestBody @jakarta.validation.Valid PlaceRequest request, @AuthenticationPrincipal User owner) {
   Place place = owned(active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))), owner); apply(place, request); place.category = categories.findById(request.categoryId()).orElseThrow(() -> notFound("Categoría")); place.updatedAt = Instant.now(); return place(places.save(place));
  }
- @DeleteMapping("/places/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deletePlace(@PathVariable Long id, @AuthenticationPrincipal User owner) { Place place = owned(active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))), owner); place.deactivatedAt = place.updatedAt = Instant.now(); places.save(place); }
+  @DeleteMapping("/places/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deletePlace(@PathVariable Long id, @AuthenticationPrincipal User owner) { Place place = owned(active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))), owner); place.deactivatedAt = place.updatedAt = Instant.now(); places.save(place); }
+  @GetMapping("/places/archived") List<PlaceDto> archivedPlaces(@AuthenticationPrincipal User owner) { return places.findAll().stream().filter(place -> place.deactivatedAt != null && place.createdBy.id.equals(owner.id)).map(place -> place(place, metrics(List.of(place.id)).get(place.id))).toList(); }
+  @PostMapping("/places/{id}/restore") PlaceDto restorePlace(@PathVariable Long id, @AuthenticationPrincipal User owner) { Place place = owned(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar")), owner); place.deactivatedAt = null; place.updatedAt = Instant.now(); return place(places.save(place)); }
  @GetMapping("/places/{id}") PlaceDto getPlace(@PathVariable Long id) { Place place = active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))); return place(place, metrics(List.of(id)).get(id)); }
  @GetMapping(value = "/places/{id}/photo", produces = "image/webp") ResponseEntity<byte[]> placePhoto(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean thumbnail) {
   active(places.findById(id).orElseThrow(() -> notFound("Lugar"))); PlacePhoto photo = placePhotos.findByPlaceId(id).orElseThrow(() -> notFound("Foto"));
@@ -86,7 +88,7 @@ public class Api {
  @PutMapping("/places/{id}/review") PlaceReviewDto saveReview(@PathVariable Long id, @RequestBody @jakarta.validation.Valid PlaceReviewRequest request, @AuthenticationPrincipal User author) {
   Place place = active(places.findById(id).orElseThrow(() -> notFound("Lugar")));
   PlaceReview review = reviews.findByPlaceIdAndAuthorId(id, author.id).orElseGet(() -> { PlaceReview value = new PlaceReview(); value.place = place; value.author = author; value.createdAt = Instant.now(); return value; });
-  apply(review, request); review.updatedAt = Instant.now(); place.status = PlaceStatus.REVIEWED; places.save(place); return review(reviews.save(review));
+   apply(review, request); review.updatedAt = Instant.now(); return review(reviews.save(review));
  }
 
  @PostMapping(value = "/places/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @org.springframework.transaction.annotation.Transactional PlaceDto uploadPlacePhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User user) throws IOException {
@@ -95,33 +97,36 @@ public class Api {
 
  @GetMapping("/places/{id}/visits") List<PlaceVisitSummaryDto> listVisits(@PathVariable Long id) {
   active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar")));
-  return visits.findByPlaceIdOrderByVisitedOnDescIdDesc(id).stream().map(Api::visitSummary).toList();
+   return visits.findByPlaceIdOrderByVisitedOnDescVisitedAtDescIdDesc(id).stream().map(Api::visitSummary).toList();
  }
- @PostMapping("/places/{id}/visits") @ResponseStatus(HttpStatus.CREATED) PlaceVisitSummaryDto addVisit(@PathVariable Long id, @RequestBody @jakarta.validation.Valid VisitRequest request, @AuthenticationPrincipal User author) {
-  Place place = active(places.findById(id).orElseThrow(() -> notFound("Lugar")));
-  if (visits.findByPlaceIdAndVisitedOn(id, request.visitedOn()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una visita para esa fecha");
-  PlaceVisit visit = new PlaceVisit(); visit.place = place; visit.visitedOn = request.visitedOn(); visit.createdBy = author; visit.createdAt = visit.updatedAt = Instant.now(); place.status = PlaceStatus.REVIEWED; places.save(place);
-  return visitSummary(visits.save(visit));
- }
- @PutMapping("/place-visits/{id}") PlaceVisitSummaryDto editVisit(@PathVariable Long id, @RequestBody @jakarta.validation.Valid VisitRequest request, @AuthenticationPrincipal User author) {
-  PlaceVisit visit = owned(active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita"))), author);
-  visits.findByPlaceIdAndVisitedOn(visit.place.id, request.visitedOn()).filter(other -> !other.id.equals(visit.id)).ifPresent(other -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una visita para esa fecha"); });
-  visit.visitedOn = request.visitedOn(); visit.updatedAt = Instant.now(); return visitSummary(visits.save(visit));
- }
+  @PostMapping("/places/{id}/visits") @ResponseStatus(HttpStatus.CREATED) PlaceVisitSummaryDto addVisit(@PathVariable Long id, @RequestBody @jakarta.validation.Valid VisitRequest request, @AuthenticationPrincipal User author) {
+   Place place = active(places.findById(id).orElseThrow(() -> notFound("Lugar")));
+   validateVisitMoment(request);
+   if (visits.findByPlaceIdAndVisitedOnAndVisitedAt(id, request.visitedOn(), request.visitedAt()).isPresent()) throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una visita para esa fecha y hora");
+   PlaceVisit visit = new PlaceVisit(); visit.place = place; visit.visitedOn = request.visitedOn(); visit.visitedAt = request.visitedAt(); visit.createdBy = author; visit.createdAt = visit.updatedAt = Instant.now(); place.status = PlaceStatus.REVIEWED; places.save(place);
+   return visitSummary(visits.save(visit));
+  }
+  @PutMapping("/place-visits/{id}") PlaceVisitSummaryDto editVisit(@PathVariable Long id, @RequestBody @jakarta.validation.Valid VisitRequest request, @AuthenticationPrincipal User author) {
+   PlaceVisit visit = owned(active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita"))), author);
+   validateVisitMoment(request);
+   visits.findByPlaceIdAndVisitedOnAndVisitedAt(visit.place.id, request.visitedOn(), request.visitedAt()).filter(other -> !other.id.equals(visit.id)).ifPresent(other -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Ya existe una visita para esa fecha y hora"); });
+   visit.visitedOn = request.visitedOn(); visit.visitedAt = request.visitedAt(); visit.updatedAt = Instant.now(); return visitSummary(visits.save(visit));
+  }
+  @DeleteMapping("/place-visits/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) @org.springframework.transaction.annotation.Transactional void deleteVisit(@PathVariable Long id, @AuthenticationPrincipal User author) { visits.delete(owned(active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita"))), author)); }
  @GetMapping("/place-visits/{id}") PlaceVisitDto getVisit(@PathVariable Long id) { return visit(active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita")))); }
 
  @PostMapping("/place-visits/{id}/items") ItemDto addItem(@PathVariable Long id, @RequestBody @jakarta.validation.Valid CreateItemRequest request, @AuthenticationPrincipal User author) {
   PlaceVisit visit = active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita")));
   Item item = new Item(); item.visit = visit; item.createdBy = author; apply(item, new ItemRequest(request.name())); return item(items.save(item));
  }
- @PutMapping("/items/{id}") @org.springframework.transaction.annotation.Transactional ItemDto editItem(@PathVariable Long id, @RequestBody @jakarta.validation.Valid ItemRequest request) { Item item = active(items.findById(id).orElseThrow(() -> notFound("Ítem"))); apply(item, request); items.save(item); return item(item); }
- @DeleteMapping("/items/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteItem(@PathVariable Long id) { Item item = active(items.findById(id).orElseThrow(() -> notFound("Ítem"))); item.deletedAt = Instant.now(); items.save(item); }
+  @PutMapping("/items/{id}") @org.springframework.transaction.annotation.Transactional ItemDto editItem(@PathVariable Long id, @RequestBody @jakarta.validation.Valid ItemRequest request, @AuthenticationPrincipal User author) { Item item = owned(active(items.findById(id).orElseThrow(() -> notFound("Ítem"))), author); apply(item, request); items.save(item); return item(item); }
+  @DeleteMapping("/items/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteItem(@PathVariable Long id, @AuthenticationPrincipal User author) { Item item = owned(active(items.findById(id).orElseThrow(() -> notFound("Ítem"))), author); item.deletedAt = Instant.now(); items.save(item); }
  @PutMapping("/items/{id}/reviews/me") ItemReviewDto saveItemReview(@PathVariable Long id, @RequestBody @jakarta.validation.Valid ItemReviewRequest request, @AuthenticationPrincipal User author) {
   Item item = active(items.findById(id).filter(value -> value.deletedAt == null).orElseThrow(() -> notFound("Ítem")));
   ItemReview review = itemReviews.findByItemIdAndAuthorId(id, author.id).orElseGet(() -> { ItemReview value = new ItemReview(); value.item = item; value.author = author; value.createdAt = Instant.now(); return value; });
   apply(review, request); review.updatedAt = Instant.now(); return itemReview(itemReviews.save(review));
  }
- @PostMapping(value = "/items/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @org.springframework.transaction.annotation.Transactional ItemDto upload(@PathVariable Long id, @RequestPart("file") MultipartFile file) throws IOException { Item item = active(items.findById(id).orElseThrow(() -> notFound("Ítem"))); photos.findByItemId(id).ifPresent(photos::delete); photos.flush(); ItemPhoto photo = storage.store(item, file); photos.save(photo); return item(item, photo); }
+  @PostMapping(value = "/items/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @org.springframework.transaction.annotation.Transactional ItemDto upload(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException { Item item = owned(active(items.findById(id).orElseThrow(() -> notFound("Ítem"))), author); photos.findByItemId(id).ifPresent(photos::delete); photos.flush(); ItemPhoto photo = storage.store(item, file); photos.save(photo); return item(item, photo); }
 
  private Map<Long, PlaceMetric> metrics(List<Long> ids) { if (ids.isEmpty()) return Map.of(); return items.metrics(ids).stream().collect(java.util.stream.Collectors.toMap(PlaceMetric::getPlaceId, metric -> metric)); }
  private Map<Long, VenueMetric> venueMetrics(List<Long> ids) { if (ids.isEmpty()) return Map.of(); return reviews.venueMetrics(ids).stream().collect(java.util.stream.Collectors.toMap(VenueMetric::getPlaceId, metric -> metric)); }
@@ -130,22 +135,22 @@ public class Api {
   double taste = metric == null ? 0 : metricValue(metric.getTasteAverage()); double price = metric == null ? 0 : metricValue(metric.getPriceAverage()); List<PlaceReviewDto> venueReviews = reviews.findByPlaceIdOrderByAuthorUsername(place.id).stream().map(Api::review).toList(); double venue = venueReviews.stream().mapToDouble(Api::venueScore).average().orElse(0); double rating = ranking(taste, price, venue); PlacePhoto photo = placePhotos.findByPlaceId(place.id).orElse(null);
   return new PlaceDto(place.id, place.name, place.address, place.sourceUrl, place.mapsUrl, place.status, category(place.category), place.highlightTags.stream().sorted(Comparator.comparing(tag -> tag.name)).map(Api::tag).toList(), place.createdBy.username, round(rating), round(taste), round(price), round(venue), metric == null ? 0 : metric.getItemCount(), photo == null ? null : photoUrl(place.id, false), photo == null ? null : photoUrl(place.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, venueReviews, place.createdAt);
  }
- private static double venueScore(PlaceReviewDto review) { return (review.location() + review.heating() + review.bathrooms() + review.exterior() + review.seating() + review.service() + review.ambiance()) / 7d; }
+  private static double venueScore(PlaceReviewDto review) { return java.util.stream.Stream.of(review.location(), review.heating(), review.bathrooms(), review.exterior(), review.seating(), review.service(), review.ambiance()).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0); }
  private static double ranking(PlaceMetric metric, VenueMetric venueMetric) { return ranking(metric == null ? 0 : metricValue(metric.getTasteAverage()), metric == null ? 0 : metricValue(metric.getPriceAverage()), venueMetric == null ? 0 : metricValue(venueMetric.getVenueAverage())); }
  private static double ranking(double taste, double price, double venue) { int parts = (taste > 0 ? 1 : 0) + (price > 0 ? 1 : 0) + (venue > 0 ? 1 : 0); return parts == 0 ? 0 : (taste + price + venue) / parts; }
  private static double metricValue(Double value) { return value == null ? 0 : value; }
  private static String photoUrl(Long placeId, boolean thumbnail) { return "/places/" + placeId + "/photo" + (thumbnail ? "?thumbnail=true" : ""); }
  private static double round(double value) { return Math.round(value * 10) / 10d; }
  private void apply(Place place, PlaceRequest request) { place.name = request.name(); place.address = request.address(); place.sourceUrl = request.sourceUrl(); place.mapsUrl = request.mapsUrl(); place.highlightTags.clear(); if (request.tagIds() != null && !request.tagIds().isEmpty()) { Set<Long> ids = new LinkedHashSet<>(request.tagIds()); List<HighlightTag> selected = highlightTags.findAllById(ids); if (selected.size() != ids.size()) throw notFound("Etiqueta"); place.highlightTags.addAll(selected); } }
- private static void apply(PlaceReview review, PlaceReviewRequest request) { review.comment = request.comment(); review.location = request.location(); review.heating = request.heating(); review.bathrooms = request.bathrooms(); review.exterior = request.exterior(); review.seating = request.seating(); review.service = request.service(); review.ambiance = request.ambiance(); }
- private PlaceVisitDto visit(PlaceVisit visit) {
+  private static void apply(PlaceReview review, PlaceReviewRequest request) { if (java.util.stream.Stream.of(request.location(), request.heating(), request.bathrooms(), request.exterior(), request.seating(), request.service(), request.ambiance()).allMatch(Objects::isNull)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Calificá al menos un aspecto del lugar"); review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.location = request.location(); review.heating = request.heating(); review.bathrooms = request.bathrooms(); review.exterior = request.exterior(); review.seating = request.seating(); review.service = request.service(); review.ambiance = request.ambiance(); }
+  private PlaceVisitDto visit(PlaceVisit visit) {
   List<Item> visitItems = items.findByVisitIdAndDeletedAtIsNullOrderByIdDesc(visit.id);
   Map<Long, ItemPhoto> photoMap = photos.findByItemIdIn(visitItems.stream().map(item -> item.id).toList()).stream().filter(photo -> photo.item != null && photo.item.id != null).collect(java.util.stream.Collectors.toMap(photo -> photo.item.id, photo -> photo, (first, ignored) -> first));
-  return new PlaceVisitDto(visit.id, visit.place.id, visit.visitedOn, visit.createdBy.username, visitItems.stream().map(item -> item(item, photoMap.get(item.id))).toList(), visit.createdAt);
+   return new PlaceVisitDto(visit.id, visit.place.id, visit.visitedOn, visit.visitedAt, visit.createdBy.username, visitItems.stream().map(item -> item(item, photoMap.get(item.id))).toList(), visit.createdAt);
  }
  private ItemDto item(Item item) { return item(item, photos.findByItemId(item.id).orElse(null)); }
  private ItemDto item(Item item, ItemPhoto photo) { return new ItemDto(item.id, item.name, item.createdBy.username, photo == null ? null : storage.url(photo.imageBase64), photo == null ? null : storage.url(photo.thumbnailBase64), photo == null ? null : photo.width, photo == null ? null : photo.height, item.reviews.stream().sorted(Comparator.comparing(review -> review.author.username)).map(Api::itemReview).toList(), item.createdAt); }
- private static PlaceVisitSummaryDto visitSummary(PlaceVisit visit) { return new PlaceVisitSummaryDto(visit.id, visit.visitedOn, visit.createdAt); }
+  private static PlaceVisitSummaryDto visitSummary(PlaceVisit visit) { return new PlaceVisitSummaryDto(visit.id, visit.visitedOn, visit.visitedAt, visit.createdBy.username, visit.createdAt); }
  private static ItemReviewDto itemReview(ItemReview review) { return new ItemReviewDto(review.author.username, review.comment, review.taste, review.price, review.createdAt, review.updatedAt); }
  private static PlaceReviewDto review(PlaceReview review) { return new PlaceReviewDto(review.author.username, review.comment, review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance); }
  private static CategoryDto category(Category category) { return new CategoryDto(category.id, category.name, category.slug, category.icon, category.active); }
@@ -156,8 +161,10 @@ public class Api {
  private static void apply(ItemReview review, ItemReviewRequest request) { review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.taste = request.taste(); review.price = request.price(); }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrado"); }
  private static Place active(Place place) { if (place.deactivatedAt != null) throw notFound("Lugar"); return place; }
- private static PlaceVisit active(PlaceVisit visit) { active(visit.place); return visit; }
- private static Item active(Item item) { active(item.visit.place); return item; }
- private static Place owned(Place place, User user) { if (!place.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return place; }
- private static PlaceVisit owned(PlaceVisit visit, User user) { if (!visit.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return visit; }
+  private static PlaceVisit active(PlaceVisit visit) { active(visit.place); return visit; }
+  private static Item active(Item item) { active(item.visit.place); return item; }
+  private static Place owned(Place place, User user) { if (!place.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return place; }
+  private static PlaceVisit owned(PlaceVisit visit, User user) { if (!visit.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return visit; }
+  private static Item owned(Item item, User user) { if (!item.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return item; }
+  private static void validateVisitMoment(VisitRequest request) { if (request.visitedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una visita no puede quedar en el futuro"); }
 }

@@ -1,7 +1,7 @@
 package com.wherefood.repo;
 
 import com.wherefood.domain.*;
-import java.time.LocalDate;
+import java.time.*;
 import java.util.*;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.*;
@@ -33,8 +33,8 @@ public final class Repositories {
  }
 
   public interface PlaceVisits extends JpaRepository<PlaceVisit, Long> {
-   @EntityGraph(attributePaths = {"place", "createdBy"}) List<PlaceVisit> findByPlaceIdOrderByVisitedOnDescIdDesc(Long placeId);
-   @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findByPlaceIdAndVisitedOn(Long placeId, LocalDate visitedOn);
+    @EntityGraph(attributePaths = {"place", "createdBy"}) List<PlaceVisit> findByPlaceIdOrderByVisitedOnDescVisitedAtDescIdDesc(Long placeId);
+    @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findByPlaceIdAndVisitedOnAndVisitedAt(Long placeId, LocalDate visitedOn, LocalTime visitedAt);
    @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findDetailedById(Long id);
   }
 
@@ -52,7 +52,7 @@ public final class Repositories {
  public interface PlaceReviews extends JpaRepository<PlaceReview, Long> {
   @EntityGraph(attributePaths = "author") List<PlaceReview> findByPlaceIdOrderByAuthorUsername(Long placeId);
   Optional<PlaceReview> findByPlaceIdAndAuthorId(Long placeId, Long authorId);
-  @Query("select r.place.id as placeId, avg((r.location + r.heating + r.bathrooms + r.exterior + r.seating + r.service + r.ambiance) / 7.0) as venueAverage from PlaceReview r where r.place.id in :ids group by r.place.id") List<VenueMetric> venueMetrics(@Param("ids") Collection<Long> ids);
+   @Query("select r.place.id as placeId, avg((coalesce(r.location, 0) + coalesce(r.heating, 0) + coalesce(r.bathrooms, 0) + coalesce(r.exterior, 0) + coalesce(r.seating, 0) + coalesce(r.service, 0) + coalesce(r.ambiance, 0)) / (case when r.location is null then 0 else 1 end + case when r.heating is null then 0 else 1 end + case when r.bathrooms is null then 0 else 1 end + case when r.exterior is null then 0 else 1 end + case when r.seating is null then 0 else 1 end + case when r.service is null then 0 else 1 end + case when r.ambiance is null then 0 else 1 end)) as venueAverage from PlaceReview r where r.place.id in :ids group by r.place.id") List<VenueMetric> venueMetrics(@Param("ids") Collection<Long> ids);
  }
 
   public interface PlacePhotos extends JpaRepository<PlacePhoto, Long> {

@@ -10,6 +10,6 @@ public class PlaceReview {
  @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="place_id") public Place place;
  @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="author_id") public User author;
  public String comment;
- public short location; public short heating; public short bathrooms; public short exterior; public short seating; public short service; public short ambiance;
+ public Short location; public Short heating; public Short bathrooms; public Short exterior; public Short seating; public Short service; public Short ambiance;
  public Instant createdAt; public Instant updatedAt;
 }
