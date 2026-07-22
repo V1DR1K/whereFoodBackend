@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 record TmdbCastMemberDto(String name, String character, String profileUrl) {}
-record TmdbMovieDto(Long tmdbId, String title, String originalTitle, String synopsis, LocalDate releaseDate, String posterUrl, List<String> genres, Integer runtime, String director, String trailerUrl, Double voteAverage, Integer voteCount, List<TmdbCastMemberDto> cast) {}
+record TmdbMovieDto(Long tmdbId, String title, String originalTitle, String synopsis, LocalDate releaseDate, String posterUrl, String posterThumbnailUrl, String posterFullUrl, List<String> genres, Integer runtime, String director, String trailerUrl, Double voteAverage, Integer voteCount, List<TmdbCastMemberDto> cast) {}
 
 @Component
 class TmdbClient {
@@ -75,7 +75,8 @@ class TmdbClient {
  }
 
  private TmdbMovieDto movie(JsonNode movie, List<String> genres, Integer runtime, String director, String trailerUrl, List<TmdbCastMemberDto> cast) {
-  return new TmdbMovieDto(movie.path("id").asLong(), text(movie, "title"), text(movie, "original_title"), text(movie, "overview"), date(text(movie, "release_date")), image(text(movie, "poster_path"), "w342"), genres, runtime, director, trailerUrl, decimal(movie, "vote_average"), number(movie, "vote_count"), cast);
+  String posterPath = text(movie, "poster_path");
+   return new TmdbMovieDto(movie.path("id").asLong(), text(movie, "title"), text(movie, "original_title"), text(movie, "overview"), date(text(movie, "release_date")), image(posterPath, "w342"), image(posterPath, "w342"), image(posterPath, "w780"), genres, runtime, director, trailerUrl, decimal(movie, "vote_average"), number(movie, "vote_count"), cast);
  }
 
  private JsonNode request(String path) {

@@ -127,6 +127,10 @@ public class Api {
   apply(review, request); review.updatedAt = Instant.now(); return itemReview(itemReviews.save(review));
  }
   @PostMapping(value = "/items/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @org.springframework.transaction.annotation.Transactional ItemDto upload(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException { Item item = owned(active(items.findById(id).orElseThrow(() -> notFound("Ítem"))), author); photos.findByItemId(id).ifPresent(photos::delete); photos.flush(); ItemPhoto photo = storage.store(item, file); photos.save(photo); return item(item, photo); }
+  @GetMapping(value = "/items/{id}/photo", produces = "image/webp") ResponseEntity<byte[]> itemPhoto(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean thumbnail) {
+   active(items.findById(id).orElseThrow(() -> notFound("Ítem"))); ItemPhoto photo = photos.findByItemId(id).orElseThrow(() -> notFound("Foto"));
+   return ResponseEntity.ok().cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(30)).cachePublic()).contentType(MediaType.valueOf("image/webp")).body(storage.bytes(thumbnail ? photo.thumbnailBase64 : photo.imageBase64));
+  }
 
  private Map<Long, PlaceMetric> metrics(List<Long> ids) { if (ids.isEmpty()) return Map.of(); return items.metrics(ids).stream().collect(java.util.stream.Collectors.toMap(PlaceMetric::getPlaceId, metric -> metric)); }
  private Map<Long, VenueMetric> venueMetrics(List<Long> ids) { if (ids.isEmpty()) return Map.of(); return reviews.venueMetrics(ids).stream().collect(java.util.stream.Collectors.toMap(VenueMetric::getPlaceId, metric -> metric)); }
@@ -149,7 +153,8 @@ public class Api {
    return new PlaceVisitDto(visit.id, visit.place.id, visit.visitedOn, visit.visitedAt, visit.createdBy.username, visitItems.stream().map(item -> item(item, photoMap.get(item.id))).toList(), visit.createdAt);
  }
  private ItemDto item(Item item) { return item(item, photos.findByItemId(item.id).orElse(null)); }
- private ItemDto item(Item item, ItemPhoto photo) { return new ItemDto(item.id, item.name, item.createdBy.username, photo == null ? null : storage.url(photo.imageBase64), photo == null ? null : storage.url(photo.thumbnailBase64), photo == null ? null : photo.width, photo == null ? null : photo.height, item.reviews.stream().sorted(Comparator.comparing(review -> review.author.username)).map(Api::itemReview).toList(), item.createdAt); }
+  private ItemDto item(Item item, ItemPhoto photo) { return new ItemDto(item.id, item.name, item.createdBy.username, photo == null ? null : itemPhotoUrl(item.id, false), photo == null ? null : itemPhotoUrl(item.id, true), photo == null ? null : photo.width, photo == null ? null : photo.height, item.reviews.stream().sorted(Comparator.comparing(review -> review.author.username)).map(Api::itemReview).toList(), item.createdAt); }
+  private static String itemPhotoUrl(Long itemId, boolean thumbnail) { return "/items/" + itemId + "/photo" + (thumbnail ? "?thumbnail=true" : ""); }
   private static PlaceVisitSummaryDto visitSummary(PlaceVisit visit) { return new PlaceVisitSummaryDto(visit.id, visit.visitedOn, visit.visitedAt, visit.createdBy.username, visit.createdAt); }
  private static ItemReviewDto itemReview(ItemReview review) { return new ItemReviewDto(review.author.username, review.comment, review.taste, review.price, review.createdAt, review.updatedAt); }
  private static PlaceReviewDto review(PlaceReview review) { return new PlaceReviewDto(review.author.username, review.comment, review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance); }
