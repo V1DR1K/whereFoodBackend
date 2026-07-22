@@ -77,7 +77,7 @@ public class Api {
   Place place = owned(active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))), owner); apply(place, request); place.category = categories.findById(request.categoryId()).orElseThrow(() -> notFound("Categoría")); place.updatedAt = Instant.now(); return place(places.save(place));
  }
   @DeleteMapping("/places/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deletePlace(@PathVariable Long id, @AuthenticationPrincipal User owner) { Place place = owned(active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))), owner); place.deactivatedAt = place.updatedAt = Instant.now(); places.save(place); }
-  @GetMapping("/places/archived") List<PlaceDto> archivedPlaces(@AuthenticationPrincipal User owner) { return places.findAll().stream().filter(place -> place.deactivatedAt != null && place.createdBy.id.equals(owner.id)).map(place -> place(place, metrics(List.of(place.id)).get(place.id))).toList(); }
+  @GetMapping("/places/archived") List<PlaceDto> archivedPlaces(@AuthenticationPrincipal User user) { return places.findAll().stream().filter(place -> place.deactivatedAt != null && canManage(place.createdBy, user)).map(place -> place(place, metrics(List.of(place.id)).get(place.id))).toList(); }
   @PostMapping("/places/{id}/restore") PlaceDto restorePlace(@PathVariable Long id, @AuthenticationPrincipal User owner) { Place place = owned(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar")), owner); place.deactivatedAt = null; place.updatedAt = Instant.now(); return place(places.save(place)); }
  @GetMapping("/places/{id}") PlaceDto getPlace(@PathVariable Long id) { Place place = active(places.findDetailedById(id).orElseThrow(() -> notFound("Lugar"))); return place(place, metrics(List.of(id)).get(id)); }
  @GetMapping(value = "/places/{id}/photo", produces = "image/webp") ResponseEntity<byte[]> placePhoto(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean thumbnail) {
@@ -168,8 +168,10 @@ public class Api {
  private static Place active(Place place) { if (place.deactivatedAt != null) throw notFound("Lugar"); return place; }
   private static PlaceVisit active(PlaceVisit visit) { active(visit.place); return visit; }
   private static Item active(Item item) { active(item.visit.place); return item; }
-  private static Place owned(Place place, User user) { if (!place.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return place; }
-  private static PlaceVisit owned(PlaceVisit visit, User user) { if (!visit.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return visit; }
-  private static Item owned(Item item, User user) { if (!item.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return item; }
+ private static Place owned(Place place, User user) { requireCanManage(place.createdBy, user); return place; }
+ private static PlaceVisit owned(PlaceVisit visit, User user) { requireCanManage(visit.createdBy, user); return visit; }
+ private static Item owned(Item item, User user) { requireCanManage(item.createdBy, user); return item; }
+ private static boolean canManage(User owner, User user) { return user.role == Role.ADMIN || owner.id.equals(user.id); }
+ private static void requireCanManage(User owner, User user) { if (!canManage(owner, user)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); }
   private static void validateVisitMoment(VisitRequest request) { if (request.visitedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una visita no puede quedar en el futuro"); }
 }

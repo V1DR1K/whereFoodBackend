@@ -85,7 +85,7 @@ public class WhyFunApi {
  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
  private static String slugFor(String value) { return Normalizer.normalize(value.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD).replaceAll("\\p{M}", "").replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", ""); }
  private static double round(double value) { return Math.round(value * 10) / 10d; }
- private static WhyFunVenue owned(WhyFunVenue venue, User user) { if (!venue.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return venue; }
+ private static WhyFunVenue owned(WhyFunVenue venue, User user) { if (user.role != Role.ADMIN && !venue.createdBy.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return venue; }
  private static void requireCoupleReviewer(User user) { if (!Set.of("tomas", "avril").contains(user.username.toLowerCase(Locale.ROOT))) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo Tomás y Avril pueden reseñar planes"); }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrado"); }
  private static ResponseStatusException badRequest(String detail) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, detail); }
