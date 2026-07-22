@@ -11,10 +11,14 @@ public class HomeRecipe {
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "author_id") public User author;
  @Enumerated(EnumType.STRING) @Column(nullable = false) public Home home;
  @Column(nullable = false) public String name;
+ @Column(nullable = false) public int servings;
  public String recipeUrl;
  @Column(nullable = false) public LocalDate preparedOn;
  @Enumerated(EnumType.STRING) @Column(nullable = false) public MealType mealType;
- @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderBy("position asc") public List<HomeRecipeIngredient> ingredients = new ArrayList<>();
+ @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "repeated_from_id") public HomeRecipe repeatedFrom;
+ @OneToMany(mappedBy = "repeatedFrom") public List<HomeRecipe> repetitions = new ArrayList<>();
+ @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderColumn(name = "position") public List<HomeRecipeIngredient> ingredients = new ArrayList<>();
+ @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderColumn(name = "position") public List<HomeRecipeStep> steps = new ArrayList<>();
  public Instant createdAt;
  public Instant updatedAt;
 }

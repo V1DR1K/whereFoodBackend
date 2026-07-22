@@ -16,13 +16,14 @@ import com.wherefood.repo.Repositories.HomeRecipeReviews;
 import com.wherefood.repo.Repositories.HomeRecipes;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class HomeRecipeApiTest {
   @Test
-  void letsEitherAuthenticatedUserUpdateARecipe() {
+  void letsTheAuthorUpdateARecipe() {
     HomeRecipes recipes = mock(HomeRecipes.class);
     HomeRecipePhotos photos = mock(HomeRecipePhotos.class);
     HomeRecipeReviews reviews = mock(HomeRecipeReviews.class);
@@ -43,7 +44,8 @@ class HomeRecipeApiTest {
 
     HomeRecipeDto result = new HomeRecipeApi(recipes, photos, reviews, null).update(
       2L,
-      new HomeRecipeRequest(Home.AVRIL, "Panes rellenos con papas", null, LocalDate.of(2026, 7, 21), MealType.ALMUERZO, List.of(new HomeRecipeIngredientRequest("Papa", 300)), null)
+      new HomeRecipeRequest(Home.AVRIL, "Panes rellenos con papas", 2, null, LocalDate.of(2026, 7, 21), MealType.ALMUERZO, List.of(new HomeRecipeIngredientRequest("Papa", BigDecimal.valueOf(300), "g")), List.of(new HomeRecipeStepRequest("Hornear hasta dorar.")), null),
+      tomas
     );
 
     assertEquals("Panes rellenos con papas", result.name());

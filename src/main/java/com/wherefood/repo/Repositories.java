@@ -96,8 +96,10 @@ public final class Repositories {
   }
 
   public interface HomeRecipes extends JpaRepository<HomeRecipe, Long> {
-    @EntityGraph(attributePaths = {"author", "ingredients"}) List<HomeRecipe> findByHomeOrderByPreparedOnDescIdDesc(Home home);
-    @Override @EntityGraph(attributePaths = {"author", "ingredients"}) Optional<HomeRecipe> findById(Long id);
+    @EntityGraph(attributePaths = {"author", "ingredients", "steps", "repeatedFrom"}) List<HomeRecipe> findByHomeOrderByPreparedOnDescIdDesc(Home home);
+    @Override @EntityGraph(attributePaths = {"author", "ingredients", "steps", "repeatedFrom"}) Optional<HomeRecipe> findById(Long id);
+    @EntityGraph(attributePaths = {"author"}) List<HomeRecipe> findByRepeatedFromIdOrderByPreparedOnDescIdDesc(Long repeatedFromId);
+    boolean existsByRepeatedFromId(Long repeatedFromId);
   }
 
   public interface HomeRecipePhotos extends JpaRepository<HomeRecipePhoto, Long> {

@@ -14,12 +14,15 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-record HomeRecipeIngredientRequest(@NotBlank @Size(max = 160) String name, @Min(0) @Max(100000) int grams) {}
-record HomeRecipeRequest(@NotNull Home home, @NotBlank @Size(max = 160) String name, @Size(max = 1000) String recipeUrl, @NotNull LocalDate preparedOn, @NotNull MealType mealType, @NotEmpty List<@Valid HomeRecipeIngredientRequest> ingredients, Long copyPhotoFromId) {}
+record HomeRecipeIngredientRequest(@NotBlank @Size(max = 160) String name, @DecimalMin(value = "0.0", inclusive = false) java.math.BigDecimal quantity, @NotBlank @Size(max = 30) String unit) {}
+record HomeRecipeStepRequest(@NotBlank @Size(max = 2000) String instruction) {}
+record HomeRecipeRequest(@NotNull Home home, @NotBlank @Size(max = 160) String name, @Min(1) @Max(100) int servings, @Size(max = 1000) String recipeUrl, @NotNull LocalDate preparedOn, @NotNull MealType mealType, @NotEmpty List<@Valid HomeRecipeIngredientRequest> ingredients, @NotEmpty List<@Valid HomeRecipeStepRequest> steps, Long repeatedFromId) {}
 record HomeRecipeReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
-record HomeRecipeIngredientDto(String name, int grams) {}
+record HomeRecipeIngredientDto(String name, java.math.BigDecimal quantity, String unit) {}
+record HomeRecipeStepDto(String instruction) {}
+record HomeRecipeReferenceDto(Long id, String name) {}
 record HomeRecipeReviewDto(Long id, String author, short rating, String comment, Instant updatedAt) {}
-record HomeRecipeDto(Long id, Home home, String name, String recipeUrl, LocalDate preparedOn, MealType mealType, List<HomeRecipeIngredientDto> ingredients, String author, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<HomeRecipeReviewDto> reviews, Instant createdAt) {}
+record HomeRecipeDto(Long id, Home home, String name, int servings, String recipeUrl, LocalDate preparedOn, MealType mealType, List<HomeRecipeIngredientDto> ingredients, List<HomeRecipeStepDto> steps, HomeRecipeReferenceDto repeatedFrom, List<HomeRecipeReferenceDto> repetitions, String author, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<HomeRecipeReviewDto> reviews, Instant createdAt) {}
 
 @RestController
 @RequestMapping("/api/how-cook")
@@ -33,36 +36,36 @@ public class HomeRecipeApi {
   this.recipes = recipes; this.photos = photos; this.reviews = reviews; this.storage = storage;
  }
 
- @GetMapping List<HomeRecipeDto> list(@RequestParam Home home) {
-  List<HomeRecipe> values = recipes.findByHomeOrderByPreparedOnDescIdDesc(home);
+  @GetMapping List<HomeRecipeDto> list(@RequestParam Home home, @RequestParam(required = false) String search) {
+   List<HomeRecipe> values = recipes.findByHomeOrderByPreparedOnDescIdDesc(home).stream().filter(recipe -> search == null || search.isBlank() || recipe.name.toLowerCase(Locale.ROOT).contains(search.trim().toLowerCase(Locale.ROOT))).toList();
   Map<Long, HomeRecipePhoto> photoMap = photoMap(values);
   Map<Long, List<HomeRecipeReviewDto>> reviewMap = reviewMap(values);
-  return values.stream().map(recipe -> recipe(recipe, photoMap.get(recipe.id), reviewMap.getOrDefault(recipe.id, List.of()))).toList();
+   return values.stream().map(recipe -> recipe(recipe, photoMap.get(recipe.id), reviewMap.getOrDefault(recipe.id, List.of()), List.of())).toList();
  }
 
  @GetMapping("/{id}") HomeRecipeDto get(@PathVariable Long id) {
   HomeRecipe recipe = findRecipe(id);
-  return recipe(recipe, photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()));
+   return recipe(recipe, photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
  }
 
  @PostMapping @ResponseStatus(HttpStatus.CREATED) @Transactional HomeRecipeDto add(@RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
-  HomeRecipe recipe = new HomeRecipe(); recipe.author = author; apply(recipe, request); recipe.createdAt = recipe.updatedAt = Instant.now();
-  HomeRecipe saved = recipes.save(recipe); HomeRecipePhoto photo = request.copyPhotoFromId() == null ? null : photos.findByRecipeId(request.copyPhotoFromId()).map(source -> copyPhoto(saved, source)).orElse(null);
-  return recipe(saved, photo, List.of());
+   HomeRecipe recipe = new HomeRecipe(); recipe.author = author; apply(recipe, request); recipe.createdAt = recipe.updatedAt = Instant.now();
+   HomeRecipe saved = recipes.save(recipe); HomeRecipePhoto photo = request.repeatedFromId() == null ? null : photos.findByRecipeId(request.repeatedFromId()).map(source -> copyPhoto(saved, source)).orElse(null);
+   return recipe(saved, photo, List.of(), List.of());
  }
 
- @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request) {
-  HomeRecipe recipe = findRecipe(id); apply(recipe, request); recipe.updatedAt = Instant.now();
-  return recipe(recipes.save(recipe), photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()));
+  @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
+   HomeRecipe recipe = owned(findRecipe(id), author); apply(recipe, request); recipe.updatedAt = Instant.now();
+   return recipe(recipes.save(recipe), photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
+  }
+
+  @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id, @AuthenticationPrincipal User author) {
+   HomeRecipe recipe = owned(findRecipe(id), author); if (recipes.existsByRepeatedFromId(id)) throw conflict("No podés borrar una receta que tiene preparaciones repetidas"); recipes.delete(recipe);
  }
 
- @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id) {
-  recipes.delete(findRecipe(id));
- }
-
- @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional HomeRecipeDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file) throws IOException {
-  HomeRecipe recipe = findRecipe(id); photos.findByRecipeId(id).ifPresent(photos::delete); photos.flush(); HomeRecipePhoto photo = photos.save(storage.store(recipe, file));
-  return recipe(recipe, photo, reviewMap(List.of(recipe)).getOrDefault(id, List.of()));
+  @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional HomeRecipeDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException {
+   HomeRecipe recipe = owned(findRecipe(id), author); photos.findByRecipeId(id).ifPresent(photos::delete); photos.flush(); HomeRecipePhoto photo = photos.save(storage.store(recipe, file));
+   return recipe(recipe, photo, reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
  }
 
  @PutMapping("/{id}/reviews/me") @Transactional HomeRecipeReviewDto saveReview(@PathVariable Long id, @RequestBody @Valid HomeRecipeReviewRequest request, @AuthenticationPrincipal User author) {
@@ -86,18 +89,25 @@ public class HomeRecipeApi {
   if (values.isEmpty()) return Map.of();
   return reviews.findByRecipeIdInOrderByAuthorUsername(values.stream().map(recipe -> recipe.id).toList()).stream().collect(java.util.stream.Collectors.groupingBy(review -> review.recipe.id, java.util.stream.Collectors.mapping(HomeRecipeApi::review, java.util.stream.Collectors.toList())));
  }
- private static void apply(HomeRecipe recipe, HomeRecipeRequest request) {
-  recipe.home = request.home(); recipe.name = request.name().trim(); recipe.recipeUrl = blankToNull(request.recipeUrl()); recipe.preparedOn = request.preparedOn(); recipe.mealType = request.mealType(); recipe.ingredients.clear();
-  for (int index = 0; index < request.ingredients().size(); index++) { HomeRecipeIngredientRequest source = request.ingredients().get(index); HomeRecipeIngredient ingredient = new HomeRecipeIngredient(); ingredient.recipe = recipe; ingredient.name = source.name().trim(); ingredient.grams = source.grams(); ingredient.position = index; recipe.ingredients.add(ingredient); }
- }
- private static HomeRecipeDto recipe(HomeRecipe value, HomeRecipePhoto photo, List<HomeRecipeReviewDto> reviews) {
-  return new HomeRecipeDto(value.id, value.home, value.name, value.recipeUrl, value.preparedOn, value.mealType, value.ingredients.stream().map(ingredient -> new HomeRecipeIngredientDto(ingredient.name, ingredient.grams)).toList(), value.author.username, photo == null ? null : "/how-cook/" + value.id + "/photo", photo == null ? null : "/how-cook/" + value.id + "/photo?thumbnail=true", photo == null ? null : photo.width, photo == null ? null : photo.height, reviews, value.createdAt);
- }
+  private void apply(HomeRecipe recipe, HomeRecipeRequest request) {
+   if (request.preparedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una receta preparada no puede quedar en el futuro");
+   HomeRecipe repeatedFrom = request.repeatedFromId() == null ? null : findRecipe(request.repeatedFromId());
+   if (repeatedFrom != null && recipe.id != null && repeatedFrom.id.equals(recipe.id)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una receta no puede repetirse a sí misma");
+   recipe.home = request.home(); recipe.name = request.name().trim(); recipe.servings = request.servings(); recipe.recipeUrl = blankToNull(request.recipeUrl()); recipe.preparedOn = request.preparedOn(); recipe.mealType = request.mealType(); recipe.repeatedFrom = repeatedFrom; recipe.ingredients.clear(); recipe.steps.clear();
+   for (int index = 0; index < request.ingredients().size(); index++) { HomeRecipeIngredientRequest source = request.ingredients().get(index); HomeRecipeIngredient ingredient = new HomeRecipeIngredient(); ingredient.recipe = recipe; ingredient.name = source.name().trim(); ingredient.quantity = source.quantity(); ingredient.unit = source.unit().trim(); ingredient.position = index; recipe.ingredients.add(ingredient); }
+   for (int index = 0; index < request.steps().size(); index++) { HomeRecipeStepRequest source = request.steps().get(index); HomeRecipeStep step = new HomeRecipeStep(); step.recipe = recipe; step.instruction = source.instruction().trim(); step.position = index; recipe.steps.add(step); }
+  }
+  private static HomeRecipeDto recipe(HomeRecipe value, HomeRecipePhoto photo, List<HomeRecipeReviewDto> reviews, List<HomeRecipeReferenceDto> repetitions) {
+   return new HomeRecipeDto(value.id, value.home, value.name, value.servings, value.recipeUrl, value.preparedOn, value.mealType, value.ingredients.stream().map(ingredient -> new HomeRecipeIngredientDto(ingredient.name, ingredient.quantity, ingredient.unit)).toList(), value.steps.stream().map(step -> new HomeRecipeStepDto(step.instruction)).toList(), value.repeatedFrom == null ? null : reference(value.repeatedFrom), repetitions, value.author.username, photo == null ? null : "/how-cook/" + value.id + "/photo", photo == null ? null : "/how-cook/" + value.id + "/photo?thumbnail=true", photo == null ? null : photo.width, photo == null ? null : photo.height, reviews, value.createdAt);
+  }
  private HomeRecipePhoto copyPhoto(HomeRecipe recipe, HomeRecipePhoto source) {
   HomeRecipePhoto copy = new HomeRecipePhoto(); copy.recipe = recipe; copy.imageBase64 = source.imageBase64; copy.thumbnailBase64 = source.thumbnailBase64; copy.width = source.width; copy.height = source.height; copy.createdAt = Instant.now();
   return photos.save(copy);
  }
- private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+  private static HomeRecipeReferenceDto reference(HomeRecipe value) { return new HomeRecipeReferenceDto(value.id, value.name); }
  private static HomeRecipeReviewDto review(HomeRecipeReview value) { return new HomeRecipeReviewDto(value.id, value.author.username, value.rating, value.comment, value.updatedAt); }
- private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
+  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
+  private static ResponseStatusException conflict(String detail) { return new ResponseStatusException(HttpStatus.CONFLICT, detail); }
+  private static HomeRecipe owned(HomeRecipe recipe, User user) { if (!recipe.author.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return recipe; }
 }
