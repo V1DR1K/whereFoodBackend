@@ -1,7 +1,7 @@
 package com.wherefood.domain;
 
 import jakarta.persistence.*;
-import java.time.Instant;
+import java.time.*;
 import java.util.*;
 
 @Entity
@@ -13,6 +13,8 @@ public class WhyFunVenue {
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "category_id", nullable = false) public WhyFunCategory category;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "subcategory_id", nullable = false) public WhyFunCategory subcategory;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by", nullable = false) public User createdBy;
+ @Column(name = "scheduled_at") public LocalDateTime scheduledAt;
+ @Column(name = "cover_photo_id") public Long coverPhotoId;
  @OneToMany(mappedBy = "venue", cascade = CascadeType.ALL, orphanRemoval = true) public List<WhyFunVenueSchedule> schedules = new ArrayList<>();
  @Column(nullable = false) public Instant createdAt;
  @Column(nullable = false) public Instant updatedAt;

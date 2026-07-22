@@ -121,8 +121,9 @@ public final class Repositories {
   }
 
   public interface WhyFunVenues extends JpaRepository<WhyFunVenue, Long> {
+    @Override @EntityGraph(attributePaths = {"category", "subcategory", "createdBy"}) List<WhyFunVenue> findAll();
    @Query("select v from WhyFunVenue v join fetch v.category join fetch v.subcategory join fetch v.createdBy where (:categoryId is null or v.category.id = :categoryId) and (:subcategoryId is null or v.subcategory.id = :subcategoryId) and (:cursor is null or v.id < :cursor) order by v.id desc") List<WhyFunVenue> list(@Param("categoryId") Long categoryId, @Param("subcategoryId") Long subcategoryId, @Param("cursor") Long cursor, Pageable pageable);
-   @EntityGraph(attributePaths = {"category", "subcategory", "createdBy", "schedules"}) @Query("select v from WhyFunVenue v where v.id=:id") Optional<WhyFunVenue> findDetailedById(@Param("id") Long id);
+    @EntityGraph(attributePaths = {"category", "subcategory", "createdBy"}) @Query("select v from WhyFunVenue v where v.id=:id") Optional<WhyFunVenue> findDetailedById(@Param("id") Long id);
    long countBySubcategoryId(Long subcategoryId);
   }
 

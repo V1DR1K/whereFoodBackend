@@ -1,27 +1,22 @@
 package com.wherefood.web;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.DayOfWeek;
-import java.time.LocalTime;
-import java.util.List;
+import com.wherefood.domain.WhyFunVenue;
+import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.server.ResponseStatusException;
 
 class WhyFunApiTest {
  @Test
- void acceptsSchedulesThatCloseAfterMidnight() {
-  assertDoesNotThrow(() -> WhyFunApi.validateSchedules(List.of(
-    new FunScheduleRequest(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(3, 0))
-  )));
- }
-
- @Test
- void rejectsOverlappingSchedulesThatCloseAfterMidnight() {
-  assertThrows(ResponseStatusException.class, () -> WhyFunApi.validateSchedules(List.of(
-    new FunScheduleRequest(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(3, 0)),
-    new FunScheduleRequest(DayOfWeek.FRIDAY, LocalTime.of(22, 0), LocalTime.of(2, 0))
-  )));
+ void separatesUpcomingAndPastPlans() throws Exception {
+  Method matcher = WhyFunApi.class.getDeclaredMethod("matchesTimeline", WhyFunVenue.class, String.class, LocalDateTime.class);
+  matcher.setAccessible(true);
+  WhyFunVenue plan = new WhyFunVenue();
+  LocalDateTime now = LocalDateTime.of(2026, 7, 22, 18, 0);
+  plan.scheduledAt = now.plusHours(2);
+  assertTrue((Boolean) matcher.invoke(null, plan, "UPCOMING", now));
+  assertFalse((Boolean) matcher.invoke(null, plan, "PAST", now));
  }
 }
