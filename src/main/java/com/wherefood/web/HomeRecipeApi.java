@@ -21,7 +21,7 @@ record RecipeRequest(@NotBlank @Size(max = 160) String name, @Size(max = 1000) S
 record CookingRequest(@NotNull Home home, @Min(1) @Max(100) int servings, @NotNull LocalDate cookedOn, @NotNull MealType mealType) {}
 record RecipeIngredientDto(String name, BigDecimal quantity, String unit) {}
 record RecipeStepDto(String instruction) {}
-record RecipeDto(Long id, String name, String sourceUrl, List<RecipeIngredientDto> ingredients, List<RecipeStepDto> steps, String createdBy, String updatedBy, Instant createdAt, Instant updatedAt) {}
+record RecipeDto(Long id, String name, String sourceUrl, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<RecipeIngredientDto> ingredients, List<RecipeStepDto> steps, String createdBy, String updatedBy, Instant createdAt, Instant updatedAt) {}
 record CookingPhotoDto(Long id, String url, String thumbnailUrl, int width, int height, int position, String createdBy, Instant createdAt) {}
 record CookingReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
 record CookingReviewDto(Long id, String author, String updatedBy, short rating, String comment, Instant createdAt, Instant updatedAt) {}
@@ -29,24 +29,26 @@ record CookingDto(Long id, RecipeDto recipe, Home home, int servings, LocalDate 
 
 /**
  * Active WhoCook contract: recipes hold reusable definitions; cookings are
- * dated executions at a home. Media and reviews always belong to a cooking.
+ * dated executions at a home. Recipes and cookings each own their profile and
+ * gallery media respectively.
  */
 @RestController
 @RequestMapping("/api/how-cook")
 public class HomeRecipeApi {
  private static final int MAX_PHOTOS = 12;
  private final Recipes recipes;
+ private final RecipePhotos recipePhotos;
  private final Cookings cookings;
  private final CookingPhotos photos;
  private final CookingReviews reviews;
  private final PhotoStorage storage;
 
- public HomeRecipeApi(Recipes recipes, Cookings cookings, CookingPhotos photos, CookingReviews reviews, PhotoStorage storage) {
-  this.recipes = recipes; this.cookings = cookings; this.photos = photos; this.reviews = reviews; this.storage = storage;
+ public HomeRecipeApi(Recipes recipes, RecipePhotos recipePhotos, Cookings cookings, CookingPhotos photos, CookingReviews reviews, PhotoStorage storage) {
+  this.recipes = recipes; this.recipePhotos = recipePhotos; this.cookings = cookings; this.photos = photos; this.reviews = reviews; this.storage = storage;
  }
 
  @GetMapping("/recipes") @Transactional(readOnly = true) List<RecipeDto> listRecipes(@RequestParam(required = false) String search) {
-  return recipes.findAll().stream().filter(recipe -> search == null || search.isBlank() || recipe.name.toLowerCase(Locale.ROOT).contains(search.trim().toLowerCase(Locale.ROOT))).sorted(Comparator.comparing((Recipe recipe) -> recipe.updatedAt).reversed()).map(HomeRecipeApi::recipe).toList();
+  return recipes.findAll().stream().filter(recipe -> search == null || search.isBlank() || recipe.name.toLowerCase(Locale.ROOT).contains(search.trim().toLowerCase(Locale.ROOT))).sorted(Comparator.comparing((Recipe recipe) -> recipe.updatedAt).reversed()).map(this::recipe).toList();
  }
  @GetMapping("/recipes/{id}") @Transactional(readOnly = true) RecipeDto getRecipe(@PathVariable Long id) { return recipe(findRecipe(id)); }
  @PostMapping("/recipes") @ResponseStatus(HttpStatus.CREATED) @Transactional RecipeDto addRecipe(@RequestBody @Valid RecipeRequest request, @AuthenticationPrincipal User author) {
@@ -55,9 +57,16 @@ public class HomeRecipeApi {
  @PutMapping("/recipes/{id}") @Transactional RecipeDto updateRecipe(@PathVariable Long id, @RequestBody @Valid RecipeRequest request, @AuthenticationPrincipal User author) {
   Recipe recipe = findRecipe(id); apply(recipe, request); recipe.updatedBy = author; recipe.updatedAt = Instant.now(); return recipe(recipes.save(recipe));
  }
- @DeleteMapping("/recipes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteRecipe(@PathVariable Long id) {
-  if (cookings.existsByRecipeId(id)) throw conflict("No podés borrar una receta con preparaciones"); recipes.delete(findRecipe(id));
- }
+  @DeleteMapping("/recipes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteRecipe(@PathVariable Long id) {
+   if (cookings.existsByRecipeId(id)) throw conflict("No podés borrar una receta con preparaciones"); recipes.delete(findRecipe(id));
+  }
+  @GetMapping(value = "/recipes/{id}/photo", produces = "image/webp") ResponseEntity<byte[]> recipePhoto(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean thumbnail) {
+   findRecipe(id); RecipePhoto photo = recipePhotos.findByRecipeId(id).orElseThrow(() -> notFound("Foto"));
+   return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic()).contentType(MediaType.valueOf("image/webp")).body(storage.bytes(thumbnail ? photo.thumbnailBase64 : photo.imageBase64));
+  }
+  @PostMapping(value = "/recipes/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional RecipeDto uploadRecipePhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException {
+   Recipe recipe = findRecipe(id); recipePhotos.findByRecipeId(id).ifPresent(recipePhotos::delete); recipePhotos.flush(); recipe.updatedBy = author; recipe.updatedAt = Instant.now(); recipes.save(recipe); recipePhotos.save(storage.store(recipe, file)); return recipe(recipe);
+  }
 
  @GetMapping("/cookings") @Transactional(readOnly = true) List<CookingDto> listCookings(@RequestParam(required = false) Home home, @RequestParam(required = false) Long recipeId) {
   List<Cooking> values = recipeId != null ? cookings.findByRecipeIdOrderByCookedOnDescIdDesc(recipeId) : home != null ? cookings.findByHomeOrderByCookedOnDescIdDesc(home) : cookings.findAll(); return values.stream().map(this::cooking).toList();
@@ -114,7 +123,11 @@ public class HomeRecipeApi {
   List<CookingPhotoDto> cookingPhotos = photos.findByCookingIdOrderByPositionAscIdAsc(value.id).stream().map(HomeRecipeApi::photo).toList(); CookingPhotoDto cover = cookingPhotos.stream().filter(photo -> photo.id().equals(value.coverPhotoId)).findFirst().orElse(cookingPhotos.isEmpty() ? null : cookingPhotos.getFirst());
   return new CookingDto(value.id, recipe(value.recipe), value.home, value.servings, value.cookedOn, value.mealType, value.createdBy.username, value.updatedBy.username, cover, cookingPhotos, reviews.findByCookingIdOrderByAuthorUsername(value.id).stream().map(HomeRecipeApi::review).toList(), value.createdAt, value.updatedAt);
  }
- private static RecipeDto recipe(Recipe value) { return new RecipeDto(value.id, value.name, value.sourceUrl, value.ingredients.stream().map(ingredient -> new RecipeIngredientDto(ingredient.name, ingredient.quantity, ingredient.unit)).toList(), value.steps.stream().map(step -> new RecipeStepDto(step.instruction)).toList(), value.createdBy.username, value.updatedBy.username, value.createdAt, value.updatedAt); }
+ private RecipeDto recipe(Recipe value) {
+  RecipePhoto photo = recipePhotos.findByRecipeId(value.id).orElse(null);
+  return new RecipeDto(value.id, value.name, value.sourceUrl, photo == null ? null : recipePhotoUrl(value.id, false, photo.id), photo == null ? null : recipePhotoUrl(value.id, true, photo.id), photo == null ? null : Integer.valueOf(photo.width), photo == null ? null : Integer.valueOf(photo.height), value.ingredients.stream().map(ingredient -> new RecipeIngredientDto(ingredient.name, ingredient.quantity, ingredient.unit)).toList(), value.steps.stream().map(step -> new RecipeStepDto(step.instruction)).toList(), value.createdBy.username, value.updatedBy.username, value.createdAt, value.updatedAt);
+ }
+ private static String recipePhotoUrl(Long recipeId, boolean thumbnail, Long photoId) { return "/how-cook/recipes/" + recipeId + "/photo?" + (thumbnail ? "thumbnail=true&" : "") + "v=" + photoId; }
  private static CookingPhotoDto photo(CookingPhoto value) { return new CookingPhotoDto(value.id, "/how-cook/cooking-photos/" + value.id, "/how-cook/cooking-photos/" + value.id + "?thumbnail=true", value.width, value.height, value.position, value.createdBy.username, value.createdAt); }
  private static CookingReviewDto review(CookingReview value) { return new CookingReviewDto(value.id, value.author.username, value.updatedBy.username, value.rating, value.comment, value.createdAt, value.updatedAt); }
  private static void apply(CookingReview review, CookingReviewRequest request) { review.rating = request.rating(); review.comment = blankToNull(request.comment()); }

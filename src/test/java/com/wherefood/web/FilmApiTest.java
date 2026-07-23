@@ -12,13 +12,21 @@ import com.wherefood.domain.FilmView;
 import com.wherefood.domain.User;
 import com.wherefood.repo.Repositories.Films;
 import com.wherefood.repo.Repositories.FilmReviews;
+import com.wherefood.repo.Repositories.FilmPhotos;
+import com.wherefood.repo.Repositories.FilmViewPhotos;
 import com.wherefood.repo.Repositories.FilmViews;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class FilmApiTest {
   @Test
@@ -109,5 +117,16 @@ class FilmApiTest {
     assertEquals(5, result.rating());
     assertEquals(LocalDate.of(2026, 7, 17), result.watchedOn());
     assertEquals(Map.of("story", (short) 4), result.metrics());
+  }
+
+  @Test
+  void listsFilmsWithoutAnyLocalOrViewPhoto() throws Exception {
+   Films films = mock(Films.class); FilmReviews reviews = mock(FilmReviews.class); FilmViews views = mock(FilmViews.class); FilmPhotos filmPhotos = mock(FilmPhotos.class); FilmViewPhotos viewPhotos = mock(FilmViewPhotos.class);
+   User tomas = new User(); tomas.username = "tomas";
+   Film film = new Film(); film.id = 42L; film.title = "Sin foto"; film.createdBy = tomas; film.createdAt = film.updatedAt = Instant.parse("2026-07-23T00:00:00Z");
+   when(films.findAll()).thenReturn(List.of(film)); when(reviews.findByFilmIdOrderByViewWatchedOnDescIdDesc(42L)).thenReturn(List.of()); when(views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(42L)).thenReturn(List.of()); when(filmPhotos.findByFilmId(42L)).thenReturn(Optional.empty());
+   MockMvc mvc = MockMvcBuilders.standaloneSetup(new FilmApi(films, reviews, views, null, filmPhotos, viewPhotos, null, null, null)).build();
+
+   mvc.perform(get("/api/films")).andExpect(status().isOk());
   }
 }

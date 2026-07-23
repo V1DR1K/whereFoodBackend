@@ -199,10 +199,11 @@ public class Api {
   }
   private PlaceDto place(Place place) { return place(place, placeSummaries(List.of(place)).get(place.id)); }
   private PlaceDto place(Place place, PlaceSummary summary) {
-   PlaceVisitPhoto cover = summary.cover(); PlacePhoto legacyPhoto = summary.legacyPhoto();
-   String photoUrl = cover == null ? legacyPhoto == null ? null : photoUrl(place.id, false, legacyPhoto.id) : visitPhotoUrl(cover.id, false);
-   String thumbnailUrl = cover == null ? legacyPhoto == null ? null : photoUrl(place.id, true, legacyPhoto.id) : visitPhotoUrl(cover.id, true);
-   Integer width = cover == null ? legacyPhoto == null ? null : legacyPhoto.width : Integer.valueOf(cover.width); Integer height = cover == null ? legacyPhoto == null ? null : legacyPhoto.height : Integer.valueOf(cover.height);
+    PlaceVisitPhoto cover = summary.cover(); PlacePhoto profilePhoto = summary.legacyPhoto();
+    String photoUrl = profilePhoto != null ? photoUrl(place.id, false, profilePhoto.id) : cover == null ? null : visitPhotoUrl(cover.id, false);
+    String thumbnailUrl = profilePhoto != null ? photoUrl(place.id, true, profilePhoto.id) : cover == null ? null : visitPhotoUrl(cover.id, true);
+    Integer width = profilePhoto != null ? Integer.valueOf(profilePhoto.width) : cover == null ? null : Integer.valueOf(cover.width);
+    Integer height = profilePhoto != null ? Integer.valueOf(profilePhoto.height) : cover == null ? null : Integer.valueOf(cover.height);
    return new PlaceDto(place.id, place.name, place.address, place.sourceUrl, place.mapsUrl, place.status, category(place.category), place.highlightTags.stream().sorted(Comparator.comparing(tag -> tag.name)).map(Api::tag).toList(), place.createdBy.username, round(summary.rating()), round(summary.taste()), round(summary.price()), round(summary.venue()), summary.visitCount(), photoUrl, thumbnailUrl, width, height, summary.reviews(), place.createdAt);
   }
   private record PlaceSummary(double rating, double taste, double price, double venue, long visitCount, PlaceVisitPhoto cover, PlacePhoto legacyPhoto, List<PlaceReviewDto> reviews) {}
@@ -221,7 +222,7 @@ public class Api {
     return new PlaceVisitDto(visit.id, visit.place.id, visit.visitedOn, visit.createdBy.username, visitItems.stream().map(item -> item(item, photoMap.get(item.id))).toList(), resultPhotos, cover, currentReviews, visit.updatedBy.username, visit.createdAt, visit.updatedAt);
   }
  private ItemDto item(Item item) { return item(item, photos.findByItemId(item.id).orElse(null)); }
-  private ItemDto item(Item item, ItemPhoto photo) { return new ItemDto(item.id, item.name, item.createdBy.username, photo == null ? null : itemPhotoUrl(item.id, false, photo.id), photo == null ? null : itemPhotoUrl(item.id, true, photo.id), photo == null ? null : photo.width, photo == null ? null : photo.height, item.reviews.stream().sorted(Comparator.comparing(review -> review.author.username)).map(Api::itemReview).toList(), item.createdAt); }
+   private ItemDto item(Item item, ItemPhoto photo) { return new ItemDto(item.id, item.name, item.createdBy.username, photo == null ? null : itemPhotoUrl(item.id, false, photo.id), photo == null ? null : itemPhotoUrl(item.id, true, photo.id), photo == null ? null : Integer.valueOf(photo.width), photo == null ? null : Integer.valueOf(photo.height), item.reviews.stream().sorted(Comparator.comparing(review -> review.author.username)).map(Api::itemReview).toList(), item.createdAt); }
   private static String itemPhotoUrl(Long itemId, boolean thumbnail, Long photoId) { return "/items/" + itemId + "/photo?" + (thumbnail ? "thumbnail=true&" : "") + "v=" + photoId; }
   private static PlaceVisitSummaryDto visitSummary(PlaceVisit visit) { return new PlaceVisitSummaryDto(visit.id, visit.visitedOn, visit.createdBy.username, visit.createdAt); }
   private static ItemReviewDto itemReview(ItemReview review) { return new ItemReviewDto(review.author.username, review.comment, review.taste, review.price, review.createdAt, review.updatedAt); }

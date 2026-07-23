@@ -30,12 +30,18 @@ public class PhotoStorage {
   return photo;
  }
   public FilmPhoto store(Film film, MultipartFile upload) throws IOException {
-  ImageData data = imageData(upload);
-  FilmPhoto photo = new FilmPhoto();
-  photo.film = film; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
+   ImageData data = imageData(upload);
+   FilmPhoto photo = new FilmPhoto();
+   photo.film = film; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
+    return photo;
+   }
+  public RecipePhoto store(Recipe recipe, MultipartFile upload) throws IOException {
+   ImageData data = imageData(upload);
+   RecipePhoto photo = new RecipePhoto();
+   photo.recipe = recipe; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
    return photo;
   }
-  public HomeRecipePhoto store(HomeRecipe recipe, MultipartFile upload) throws IOException {
+   public HomeRecipePhoto store(HomeRecipe recipe, MultipartFile upload) throws IOException {
    ImageData data = imageData(upload);
    HomeRecipePhoto photo = new HomeRecipePhoto();
    photo.recipe = recipe; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();

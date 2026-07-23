@@ -142,7 +142,11 @@ public class FilmApi {
     FilmPhoto photo = filmPhotos.findByFilmId(film.id).orElse(null);
     FilmViewPhoto viewPhoto = photo == null && !filmViews.isEmpty() && viewPhotos != null ? viewPhotos.findByViewIdOrderByPositionAscIdAsc(filmViews.getFirst().id()).stream().findFirst().orElse(null) : null;
    TmdbMovieDto catalog = catalog(film.tmdbId, detailedTmdb);
-    return new FilmDto(film.id, film.tmdbId, film.title, film.originalTitle, film.synopsis, film.releaseDate, photo != null ? photoUrl(film.id, false, photo.id) : viewPhoto == null ? posterUrl(film.posterPath) : "/film-view-photos/" + viewPhoto.id, photo != null ? photoUrl(film.id, true, photo.id) : viewPhoto == null ? null : "/film-view-photos/" + viewPhoto.id + "?thumbnail=true", photo != null ? photo.width : viewPhoto == null ? null : viewPhoto.width, photo != null ? photo.height : viewPhoto == null ? null : viewPhoto.height, film.genres.stream().map(value -> value.name).sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, filmViews, film.createdAt, catalog);
+     String posterUrl = photo != null ? photoUrl(film.id, false, photo.id) : viewPhoto == null ? posterUrl(film.posterPath) : "/film-view-photos/" + viewPhoto.id;
+     String thumbnailUrl = photo != null ? photoUrl(film.id, true, photo.id) : viewPhoto == null ? null : "/film-view-photos/" + viewPhoto.id + "?thumbnail=true";
+     Integer posterWidth = photo != null ? Integer.valueOf(photo.width) : viewPhoto == null ? null : Integer.valueOf(viewPhoto.width);
+     Integer posterHeight = photo != null ? Integer.valueOf(photo.height) : viewPhoto == null ? null : Integer.valueOf(viewPhoto.height);
+     return new FilmDto(film.id, film.tmdbId, film.title, film.originalTitle, film.synopsis, film.releaseDate, posterUrl, thumbnailUrl, posterWidth, posterHeight, film.genres.stream().map(value -> value.name).sorted(String.CASE_INSENSITIVE_ORDER).toList(), film.platform == null ? null : platform(film.platform), film.watchedCount, film.lastWatchedOn, film.createdBy.username, filmReviews, filmViews, film.createdAt, catalog);
   }
   private void apply(Film film, FilmRequest request) {
    if (request.tmdbId() == null) {

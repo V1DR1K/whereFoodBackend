@@ -150,12 +150,13 @@ public final class Repositories {
    long countBySubcategoryId(Long subcategoryId);
   }
 
-  public interface WhyFunVenuePhotos extends JpaRepository<WhyFunVenuePhoto, Long> {
-   @EntityGraph(attributePaths = "venue") List<WhyFunVenuePhoto> findByVenueIdInOrderByVenueIdAscIdAsc(Collection<Long> venueIds);
-   List<WhyFunVenuePhoto> findByVenueIdOrderByIdAsc(Long venueId);
-   @EntityGraph(attributePaths = {"venue", "venue.createdBy"}) Optional<WhyFunVenuePhoto> findDetailedById(Long id);
-   long countByVenueId(Long venueId);
-  }
+   public interface WhyFunVenuePhotos extends JpaRepository<WhyFunVenuePhoto, Long> {
+    @EntityGraph(attributePaths = "venue") List<WhyFunVenuePhoto> findByVenueIdInOrderByVenueIdAscIdAsc(Collection<Long> venueIds);
+    List<WhyFunVenuePhoto> findByVenueIdOrderByIdAsc(Long venueId);
+    @EntityGraph(attributePaths = {"venue", "venue.createdBy"}) Optional<WhyFunVenuePhoto> findDetailedById(Long id);
+    Optional<WhyFunVenuePhoto> findByIdAndVenueId(Long id, Long venueId);
+    long countByVenueId(Long venueId);
+   }
 
   public interface WhyFunReviewSummary {
    Long getId(); Long getVenueId(); String getAuthor(); Short getRating(); String getComment(); java.time.Instant getUpdatedAt();
@@ -189,6 +190,10 @@ public final class Repositories {
     @Override @EntityGraph(attributePaths = {"createdBy", "updatedBy", "ingredients", "steps"}) Optional<Recipe> findById(Long id);
     @Override @EntityGraph(attributePaths = {"createdBy", "updatedBy", "ingredients", "steps"}) List<Recipe> findAll();
    }
+
+    public interface RecipePhotos extends JpaRepository<RecipePhoto, Long> {
+     Optional<RecipePhoto> findByRecipeId(Long recipeId);
+    }
 
    public interface Cookings extends JpaRepository<Cooking, Long> {
     @Override @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) List<Cooking> findAll();

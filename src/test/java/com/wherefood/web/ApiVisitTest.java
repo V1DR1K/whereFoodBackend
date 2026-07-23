@@ -81,7 +81,23 @@ class ApiVisitTest {
     assertEquals(2, result.itemCount());
     assertEquals("/place-visit-photos/99", result.photoUrl());
     assertEquals("/place-visit-photos/99?thumbnail=true", result.thumbnailUrl());
-    assertEquals(result.rating(), listed.rating());
+   assertEquals(result.rating(), listed.rating());
+  }
+
+  @Test
+  void givesTheParentPlaceProfilePriorityOverTheVisitCover() {
+   Places places = mock(Places.class); PlaceVisits visits = mock(PlaceVisits.class); PlaceVisitPhotos visitPhotos = mock(PlaceVisitPhotos.class); PlaceVisitReviews visitReviews = mock(PlaceVisitReviews.class); PlacePhotos placePhotos = mock(PlacePhotos.class);
+   User tomas = user(7L, "tomas"); Place place = new Place(); place.id = 4L; place.name = "Lugar"; place.status = PlaceStatus.REVIEWED; place.createdBy = tomas; place.category = new com.wherefood.domain.Category();
+   PlaceVisit visit = visit(10L, place, tomas, LocalDate.of(2026, 7, 22)); PlaceVisitPhoto cover = new PlaceVisitPhoto(); cover.id = 99L; cover.visit = visit; cover.createdBy = tomas; cover.width = 1200; cover.height = 800; visit.coverPhotoId = cover.id;
+   com.wherefood.domain.PlacePhoto profile = new com.wherefood.domain.PlacePhoto(); profile.id = 88L; profile.place = place; profile.width = 900; profile.height = 600;
+   when(places.findDetailedById(4L)).thenReturn(Optional.of(place)); when(visits.findByPlaceIdInOrderByPlaceIdAscVisitedOnDescIdDesc(List.of(4L))).thenReturn(List.of(visit)); when(visitPhotos.findByVisitIdInOrderByVisitIdAscPositionAscIdAsc(List.of(10L))).thenReturn(List.of(cover)); when(visitReviews.findByVisitIdInOrderByVisitIdAscAuthorUsername(List.of(10L))).thenReturn(List.of()); when(placePhotos.findByPlaceIdIn(List.of(4L))).thenReturn(List.of(profile));
+
+   PlaceDto result = new Api(null, null, null, places, visits, null, null, null, null, placePhotos, visitPhotos, visitReviews, null, null, null).getPlace(4L);
+
+   assertEquals("/places/4/photo?v=88", result.photoUrl());
+   assertEquals("/places/4/photo?thumbnail=true&v=88", result.thumbnailUrl());
+   assertEquals(900, result.photoWidth());
+   assertEquals(600, result.photoHeight());
   }
 
   @Test
