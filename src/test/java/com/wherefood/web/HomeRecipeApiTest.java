@@ -10,8 +10,10 @@ import com.wherefood.domain.*;
 import com.wherefood.repo.Repositories.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import jakarta.persistence.OrderColumn;
 import org.junit.jupiter.api.Test;
 
 class HomeRecipeApiTest {
@@ -34,6 +36,20 @@ class HomeRecipeApiTest {
   RecipeDto result = new HomeRecipeApi(recipes, null, null, null, null).addRecipe(new RecipeRequest("Tarta", "https://example.test/tarta", List.of(new RecipeIngredientRequest("Harina", BigDecimal.valueOf(250), "g")), List.of(new RecipeStepRequest("Hornear."))), tomas);
 
   assertEquals(5L, result.id()); assertEquals("Tarta", result.name()); assertEquals(1, result.ingredients().size()); assertEquals("tomas", result.createdBy());
+ }
+
+ @Test
+ void listsRecipesWithIngredientsAndStepsUsingIndexedCollections() throws NoSuchFieldException {
+  Recipes recipes = mock(Recipes.class); User tomas = user(7L, "tomas"); Recipe recipe = new Recipe(); recipe.id = 5L; recipe.name = "Tarta"; recipe.createdBy = recipe.updatedBy = tomas; recipe.updatedAt = Instant.parse("2026-07-23T00:00:00Z");
+  RecipeIngredient ingredient = new RecipeIngredient(); ingredient.name = "Harina"; ingredient.quantity = BigDecimal.valueOf(250); ingredient.unit = "g"; ingredient.position = 0; recipe.ingredients.add(ingredient);
+  RecipeStep step = new RecipeStep(); step.instruction = "Hornear."; step.position = 0; recipe.steps.add(step);
+  when(recipes.findAll()).thenReturn(List.of(recipe));
+
+  List<RecipeDto> result = new HomeRecipeApi(recipes, null, null, null, null).listRecipes(null);
+
+  assertEquals("Harina", result.getFirst().ingredients().getFirst().name()); assertEquals("Hornear.", result.getFirst().steps().getFirst().instruction());
+  assertEquals("position", Recipe.class.getDeclaredField("ingredients").getAnnotation(OrderColumn.class).name());
+  assertEquals("position", Recipe.class.getDeclaredField("steps").getAnnotation(OrderColumn.class).name());
  }
 
  private static User user(Long id, String username) { User user = new User(); user.id = id; user.username = username; return user; }

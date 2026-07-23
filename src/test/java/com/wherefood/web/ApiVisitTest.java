@@ -63,12 +63,15 @@ class ApiVisitTest {
     PlaceVisitReview first = review(recent, tomas, (short) 4, (short) 3, null, (short) 2, null, null, null, null, (short) 4, null);
     PlaceVisitReview second = review(older, avril, (short) 5, null, (short) 4, null, null, (short) 5, null, null, null, null);
     when(places.findDetailedById(4L)).thenReturn(Optional.of(place));
+    when(places.findAll()).thenReturn(List.of(place));
     when(visits.findByPlaceIdInOrderByPlaceIdAscVisitedOnDescIdDesc(List.of(4L))).thenReturn(List.of(recent, older));
     when(visitPhotos.findByVisitIdInOrderByVisitIdAscPositionAscIdAsc(List.of(10L, 9L))).thenReturn(List.of(photo));
     when(visitReviews.findByVisitIdInOrderByVisitIdAscAuthorUsername(List.of(10L, 9L))).thenReturn(List.of(first, second));
     when(placePhotos.findByPlaceIdIn(List.of(4L))).thenReturn(List.of());
 
-    PlaceDto result = new Api(null, null, null, places, visits, null, null, null, null, placePhotos, visitPhotos, visitReviews, null, null, null).getPlace(4L);
+    Api api = new Api(null, null, null, places, visits, null, null, null, null, placePhotos, visitPhotos, visitReviews, null, null, null);
+    PlaceDto result = api.getPlace(4L);
+    PlaceDto listed = api.list(null, null, null, null, 12).content().getFirst();
 
     assertEquals(4.5, result.rating());
     assertEquals(3, result.tasteAverage());
@@ -77,6 +80,7 @@ class ApiVisitTest {
     assertEquals(2, result.itemCount());
     assertEquals("/place-visit-photos/99", result.photoUrl());
     assertEquals("/place-visit-photos/99?thumbnail=true", result.thumbnailUrl());
+    assertEquals(result.rating(), listed.rating());
   }
 
   private static PlaceVisit visit(Long id, Place place, User author, LocalDate visitedOn) {

@@ -48,8 +48,8 @@ public final class Repositories {
    }
 
     public interface PlaceVisitReviews extends JpaRepository<PlaceVisitReview, Long> {
-     @EntityGraph(attributePaths = {"author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdOrderByAuthorUsername(Long visitId);
-     @EntityGraph(attributePaths = {"author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdInOrderByVisitIdAscAuthorUsername(Collection<Long> visitIds);
+     @EntityGraph(attributePaths = {"visit", "visit.place", "author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdOrderByAuthorUsername(Long visitId);
+     @EntityGraph(attributePaths = {"visit", "visit.place", "author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdInOrderByVisitIdAscAuthorUsername(Collection<Long> visitIds);
     @EntityGraph(attributePaths = {"visit", "visit.place", "author", "updatedBy"}) Optional<PlaceVisitReview> findDetailedById(Long id);
     Optional<PlaceVisitReview> findByVisitIdAndAuthorId(Long visitId, Long authorId);
    }

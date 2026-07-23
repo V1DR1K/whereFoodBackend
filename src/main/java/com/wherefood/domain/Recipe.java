@@ -12,8 +12,8 @@ public class Recipe {
  @Column(name = "source_url") public String sourceUrl;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by", nullable = false) public User createdBy;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "updated_by", nullable = false) public User updatedBy;
- @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderBy("position asc") public List<RecipeIngredient> ingredients = new ArrayList<>();
- @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderBy("position asc") public List<RecipeStep> steps = new ArrayList<>();
+ @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderColumn(name = "position") public List<RecipeIngredient> ingredients = new ArrayList<>();
+ @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true) @OrderColumn(name = "position") public List<RecipeStep> steps = new ArrayList<>();
  public Instant createdAt;
  public Instant updatedAt;
 }
