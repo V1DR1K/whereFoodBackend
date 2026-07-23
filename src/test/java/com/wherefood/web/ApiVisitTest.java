@@ -1,6 +1,7 @@
 package com.wherefood.web;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -81,6 +82,26 @@ class ApiVisitTest {
     assertEquals("/place-visit-photos/99", result.photoUrl());
     assertEquals("/place-visit-photos/99?thumbnail=true", result.thumbnailUrl());
     assertEquals(result.rating(), listed.rating());
+  }
+
+  @Test
+  void keepsPhotoDimensionsEmptyWhenAPlaceHasNoMedia() {
+    Places places = mock(Places.class);
+    PlaceVisits visits = mock(PlaceVisits.class);
+    PlaceVisitPhotos visitPhotos = mock(PlaceVisitPhotos.class);
+    PlaceVisitReviews visitReviews = mock(PlaceVisitReviews.class);
+    PlacePhotos placePhotos = mock(PlacePhotos.class);
+    Place place = new Place();
+    place.id = 5L; place.name = "Sin foto"; place.status = PlaceStatus.PENDING; place.createdBy = user(7L, "tomas"); place.category = new com.wherefood.domain.Category();
+    when(places.findDetailedById(5L)).thenReturn(Optional.of(place));
+    when(visits.findByPlaceIdInOrderByPlaceIdAscVisitedOnDescIdDesc(List.of(5L))).thenReturn(List.of());
+    when(placePhotos.findByPlaceIdIn(List.of(5L))).thenReturn(List.of());
+
+    PlaceDto result = new Api(null, null, null, places, visits, null, null, null, null, placePhotos, visitPhotos, visitReviews, null, null, null).getPlace(5L);
+
+    assertNull(result.photoUrl());
+    assertNull(result.photoWidth());
+    assertNull(result.photoHeight());
   }
 
   private static PlaceVisit visit(Long id, Place place, User author, LocalDate visitedOn) {

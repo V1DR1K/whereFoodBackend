@@ -202,7 +202,7 @@ public class Api {
    PlaceVisitPhoto cover = summary.cover(); PlacePhoto legacyPhoto = summary.legacyPhoto();
    String photoUrl = cover == null ? legacyPhoto == null ? null : photoUrl(place.id, false, legacyPhoto.id) : visitPhotoUrl(cover.id, false);
    String thumbnailUrl = cover == null ? legacyPhoto == null ? null : photoUrl(place.id, true, legacyPhoto.id) : visitPhotoUrl(cover.id, true);
-   Integer width = cover == null ? legacyPhoto == null ? null : legacyPhoto.width : cover.width; Integer height = cover == null ? legacyPhoto == null ? null : legacyPhoto.height : cover.height;
+   Integer width = cover == null ? legacyPhoto == null ? null : legacyPhoto.width : Integer.valueOf(cover.width); Integer height = cover == null ? legacyPhoto == null ? null : legacyPhoto.height : Integer.valueOf(cover.height);
    return new PlaceDto(place.id, place.name, place.address, place.sourceUrl, place.mapsUrl, place.status, category(place.category), place.highlightTags.stream().sorted(Comparator.comparing(tag -> tag.name)).map(Api::tag).toList(), place.createdBy.username, round(summary.rating()), round(summary.taste()), round(summary.price()), round(summary.venue()), summary.visitCount(), photoUrl, thumbnailUrl, width, height, summary.reviews(), place.createdAt);
   }
   private record PlaceSummary(double rating, double taste, double price, double venue, long visitCount, PlaceVisitPhoto cover, PlacePhoto legacyPhoto, List<PlaceReviewDto> reviews) {}
