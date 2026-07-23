@@ -5,6 +5,7 @@ import com.wherefood.repo.Repositories.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
 import org.springframework.http.*;
@@ -14,107 +15,112 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-record HomeRecipeIngredientRequest(@NotBlank @Size(max = 160) String name, @DecimalMin(value = "0.0", inclusive = false) java.math.BigDecimal quantity, @NotBlank @Size(max = 30) String unit) {}
-record HomeRecipeStepRequest(@NotBlank @Size(max = 2000) String instruction) {}
-record HomeRecipeRequest(@NotNull Home home, @NotBlank @Size(max = 160) String name, @Min(1) @Max(100) int servings, @Size(max = 1000) String recipeUrl, @NotNull LocalDate preparedOn, @NotNull MealType mealType, @NotEmpty List<@Valid HomeRecipeIngredientRequest> ingredients, @NotEmpty List<@Valid HomeRecipeStepRequest> steps, Long repeatedFromId) {}
-record HomeRecipeReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
-record HomeRecipeIngredientDto(String name, java.math.BigDecimal quantity, String unit) {}
-record HomeRecipeStepDto(String instruction) {}
-record HomeRecipeReferenceDto(Long id, String name) {}
-record HomeRecipeReviewDto(Long id, String author, short rating, String comment, Instant updatedAt) {}
-record HomeRecipeDto(Long id, Home home, String name, int servings, String recipeUrl, LocalDate preparedOn, MealType mealType, List<HomeRecipeIngredientDto> ingredients, List<HomeRecipeStepDto> steps, HomeRecipeReferenceDto repeatedFrom, List<HomeRecipeReferenceDto> repetitions, String author, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<HomeRecipeReviewDto> reviews, Instant createdAt) {}
+record RecipeIngredientRequest(@NotBlank @Size(max = 160) String name, @DecimalMin(value = "0.0", inclusive = false) BigDecimal quantity, @NotBlank @Size(max = 30) String unit) {}
+record RecipeStepRequest(@NotBlank @Size(max = 2000) String instruction) {}
+record RecipeRequest(@NotBlank @Size(max = 160) String name, @Size(max = 1000) String sourceUrl, @NotEmpty List<@Valid RecipeIngredientRequest> ingredients, @NotEmpty List<@Valid RecipeStepRequest> steps) {}
+record CookingRequest(@NotNull Home home, @Min(1) @Max(100) int servings, @NotNull LocalDate cookedOn, @NotNull MealType mealType) {}
+record RecipeIngredientDto(String name, BigDecimal quantity, String unit) {}
+record RecipeStepDto(String instruction) {}
+record RecipeDto(Long id, String name, String sourceUrl, List<RecipeIngredientDto> ingredients, List<RecipeStepDto> steps, String createdBy, String updatedBy, Instant createdAt, Instant updatedAt) {}
+record CookingPhotoDto(Long id, String url, String thumbnailUrl, int width, int height, int position, String createdBy, Instant createdAt) {}
+record CookingReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
+record CookingReviewDto(Long id, String author, String updatedBy, short rating, String comment, Instant createdAt, Instant updatedAt) {}
+record CookingDto(Long id, RecipeDto recipe, Home home, int servings, LocalDate cookedOn, MealType mealType, String createdBy, String updatedBy, CookingPhotoDto coverPhoto, List<CookingPhotoDto> photos, List<CookingReviewDto> reviews, Instant createdAt, Instant updatedAt) {}
 
+/**
+ * Active WhoCook contract: recipes hold reusable definitions; cookings are
+ * dated executions at a home. Media and reviews always belong to a cooking.
+ */
 @RestController
 @RequestMapping("/api/how-cook")
 public class HomeRecipeApi {
- private final HomeRecipes recipes;
- private final HomeRecipePhotos photos;
- private final HomeRecipeReviews reviews;
+ private static final int MAX_PHOTOS = 12;
+ private final Recipes recipes;
+ private final Cookings cookings;
+ private final CookingPhotos photos;
+ private final CookingReviews reviews;
  private final PhotoStorage storage;
 
- public HomeRecipeApi(HomeRecipes recipes, HomeRecipePhotos photos, HomeRecipeReviews reviews, PhotoStorage storage) {
-  this.recipes = recipes; this.photos = photos; this.reviews = reviews; this.storage = storage;
+ public HomeRecipeApi(Recipes recipes, Cookings cookings, CookingPhotos photos, CookingReviews reviews, PhotoStorage storage) {
+  this.recipes = recipes; this.cookings = cookings; this.photos = photos; this.reviews = reviews; this.storage = storage;
  }
 
-  @GetMapping List<HomeRecipeDto> list(@RequestParam Home home, @RequestParam(required = false) String search) {
-   List<HomeRecipe> values = recipes.findByHomeOrderByPreparedOnDescIdDesc(home).stream().filter(recipe -> search == null || search.isBlank() || recipe.name.toLowerCase(Locale.ROOT).contains(search.trim().toLowerCase(Locale.ROOT))).toList();
-  Map<Long, HomeRecipePhoto> photoMap = photoMap(values);
-  Map<Long, List<HomeRecipeReviewDto>> reviewMap = reviewMap(values);
-   return values.stream().map(recipe -> recipe(recipe, photoMap.get(recipe.id), reviewMap.getOrDefault(recipe.id, List.of()), List.of())).toList();
+ @GetMapping("/recipes") @Transactional(readOnly = true) List<RecipeDto> listRecipes(@RequestParam(required = false) String search) {
+  return recipes.findAll().stream().filter(recipe -> search == null || search.isBlank() || recipe.name.toLowerCase(Locale.ROOT).contains(search.trim().toLowerCase(Locale.ROOT))).sorted(Comparator.comparing((Recipe recipe) -> recipe.updatedAt).reversed()).map(HomeRecipeApi::recipe).toList();
+ }
+ @GetMapping("/recipes/{id}") @Transactional(readOnly = true) RecipeDto getRecipe(@PathVariable Long id) { return recipe(findRecipe(id)); }
+ @PostMapping("/recipes") @ResponseStatus(HttpStatus.CREATED) @Transactional RecipeDto addRecipe(@RequestBody @Valid RecipeRequest request, @AuthenticationPrincipal User author) {
+  Recipe recipe = new Recipe(); recipe.createdBy = recipe.updatedBy = author; recipe.createdAt = recipe.updatedAt = Instant.now(); apply(recipe, request); return recipe(recipes.save(recipe));
+ }
+ @PutMapping("/recipes/{id}") @Transactional RecipeDto updateRecipe(@PathVariable Long id, @RequestBody @Valid RecipeRequest request, @AuthenticationPrincipal User author) {
+  Recipe recipe = findRecipe(id); apply(recipe, request); recipe.updatedBy = author; recipe.updatedAt = Instant.now(); return recipe(recipes.save(recipe));
+ }
+ @DeleteMapping("/recipes/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteRecipe(@PathVariable Long id) {
+  if (cookings.existsByRecipeId(id)) throw conflict("No podés borrar una receta con preparaciones"); recipes.delete(findRecipe(id));
  }
 
- @GetMapping("/{id}") HomeRecipeDto get(@PathVariable Long id) {
-  HomeRecipe recipe = findRecipe(id);
-   return recipe(recipe, photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
+ @GetMapping("/cookings") @Transactional(readOnly = true) List<CookingDto> listCookings(@RequestParam(required = false) Home home, @RequestParam(required = false) Long recipeId) {
+  List<Cooking> values = recipeId != null ? cookings.findByRecipeIdOrderByCookedOnDescIdDesc(recipeId) : home != null ? cookings.findByHomeOrderByCookedOnDescIdDesc(home) : cookings.findAll(); return values.stream().map(this::cooking).toList();
+ }
+ @PostMapping("/recipes/{recipeId}/cookings") @ResponseStatus(HttpStatus.CREATED) @Transactional CookingDto addCooking(@PathVariable Long recipeId, @RequestBody @Valid CookingRequest request, @AuthenticationPrincipal User author) {
+  validateCookingDate(request); Cooking cooking = new Cooking(); cooking.recipe = findRecipe(recipeId); cooking.createdBy = cooking.updatedBy = author; cooking.createdAt = cooking.updatedAt = Instant.now(); apply(cooking, request); return cooking(cookings.save(cooking));
+ }
+ @GetMapping("/cookings/{id}") @Transactional(readOnly = true) CookingDto getCooking(@PathVariable Long id) { return cooking(findCooking(id)); }
+ @PutMapping("/cookings/{id}") @Transactional CookingDto updateCooking(@PathVariable Long id, @RequestBody @Valid CookingRequest request, @AuthenticationPrincipal User author) {
+  validateCookingDate(request); Cooking cooking = findCooking(id); apply(cooking, request); cooking.updatedBy = author; cooking.updatedAt = Instant.now(); return cooking(cookings.save(cooking));
+ }
+ @DeleteMapping("/cookings/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteCooking(@PathVariable Long id) { cookings.delete(findCooking(id)); }
+
+ @PostMapping(value = "/cookings/{id}/photos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional CookingDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException {
+  Cooking cooking = findCooking(id); List<CookingPhoto> current = photos.findByCookingIdOrderByPositionAscIdAsc(id); if (current.size() >= MAX_PHOTOS) throw conflict("Cada preparación admite hasta " + MAX_PHOTOS + " fotos");
+  CookingPhoto photo = photos.save(storage.store(cooking, author, current.isEmpty() ? 0 : current.getLast().position + 1, file));
+  if (cooking.coverPhotoId == null) { cooking.coverPhotoId = photo.id; cooking.updatedBy = author; cooking.updatedAt = Instant.now(); cookings.save(cooking); }
+  return cooking(cooking);
+ }
+ @PutMapping("/cookings/{id}/cover/{photoId}") @Transactional CookingDto setCover(@PathVariable Long id, @PathVariable Long photoId, @AuthenticationPrincipal User author) {
+  Cooking cooking = findCooking(id); CookingPhoto photo = photos.findDetailedById(photoId).orElseThrow(() -> notFound("Foto")); if (!photo.cooking.id.equals(cooking.id)) throw badRequest("La foto no pertenece a esta preparación");
+  cooking.coverPhotoId = photo.id; cooking.updatedBy = author; cooking.updatedAt = Instant.now(); return cooking(cookings.save(cooking));
+ }
+ @DeleteMapping("/cooking-photos/{photoId}") @ResponseStatus(HttpStatus.NO_CONTENT) @Transactional void deletePhoto(@PathVariable Long photoId, @AuthenticationPrincipal User author) {
+  CookingPhoto photo = photos.findDetailedById(photoId).orElseThrow(() -> notFound("Foto")); Cooking cooking = photo.cooking; boolean wasCover = photo.id.equals(cooking.coverPhotoId); photos.delete(photo); photos.flush();
+  if (wasCover) { cooking.coverPhotoId = photos.findByCookingIdOrderByPositionAscIdAsc(cooking.id).stream().findFirst().map(value -> value.id).orElse(null); cooking.updatedBy = author; cooking.updatedAt = Instant.now(); cookings.save(cooking); }
+ }
+ @GetMapping(value = "/cooking-photos/{photoId}", produces = "image/webp") ResponseEntity<byte[]> photo(@PathVariable Long photoId, @RequestParam(defaultValue = "false") boolean thumbnail) {
+  CookingPhoto photo = photos.findById(photoId).orElseThrow(() -> notFound("Foto")); return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic()).contentType(MediaType.valueOf("image/webp")).body(storage.bytes(thumbnail ? photo.thumbnailBase64 : photo.imageBase64));
  }
 
- @PostMapping @ResponseStatus(HttpStatus.CREATED) @Transactional HomeRecipeDto add(@RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
-   HomeRecipe recipe = new HomeRecipe(); recipe.author = author; apply(recipe, request); recipe.createdAt = recipe.updatedAt = Instant.now();
-   HomeRecipe saved = recipes.save(recipe); HomeRecipePhoto photo = request.repeatedFromId() == null ? null : photos.findByRecipeId(request.repeatedFromId()).map(source -> copyPhoto(saved, source)).orElse(null);
-   return recipe(saved, photo, List.of(), List.of());
+ @PostMapping("/cookings/{id}/reviews") @ResponseStatus(HttpStatus.CREATED) @Transactional CookingReviewDto addReview(@PathVariable Long id, @RequestBody @Valid CookingReviewRequest request, @AuthenticationPrincipal User author) {
+  Cooking cooking = findCooking(id); if (reviews.findByCookingIdAndAuthorId(id, author.id).isPresent()) throw conflict("Ya existe una reseña de este autor para la preparación");
+  CookingReview review = new CookingReview(); review.cooking = cooking; review.author = review.updatedBy = author; review.createdAt = review.updatedAt = Instant.now(); apply(review, request); return review(reviews.save(review));
  }
+ @PutMapping("/cookings/{id}/reviews/me") @Transactional CookingReviewDto saveOwnReview(@PathVariable Long id, @RequestBody @Valid CookingReviewRequest request, @AuthenticationPrincipal User author) {
+  Cooking cooking = findCooking(id); CookingReview review = reviews.findByCookingIdAndAuthorId(id, author.id).orElseGet(() -> { CookingReview value = new CookingReview(); value.cooking = cooking; value.author = author; value.createdAt = Instant.now(); return value; });
+  review.updatedBy = author; review.updatedAt = Instant.now(); apply(review, request); return review(reviews.save(review));
+ }
+ @PutMapping("/cooking-reviews/{reviewId}") @Transactional CookingReviewDto updateReview(@PathVariable Long reviewId, @RequestBody @Valid CookingReviewRequest request, @AuthenticationPrincipal User author) {
+  CookingReview review = reviews.findDetailedById(reviewId).orElseThrow(() -> notFound("Reseña")); review.updatedBy = author; review.updatedAt = Instant.now(); apply(review, request); return review(reviews.save(review));
+ }
+ @DeleteMapping("/cooking-reviews/{reviewId}") @ResponseStatus(HttpStatus.NO_CONTENT) void deleteReview(@PathVariable Long reviewId) { reviews.delete(reviews.findDetailedById(reviewId).orElseThrow(() -> notFound("Reseña"))); }
 
-  @PutMapping("/{id}") HomeRecipeDto update(@PathVariable Long id, @RequestBody @Valid HomeRecipeRequest request, @AuthenticationPrincipal User author) {
-   HomeRecipe recipe = owned(findRecipe(id), author); apply(recipe, request); recipe.updatedAt = Instant.now();
-   return recipe(recipes.save(recipe), photos.findByRecipeId(id).orElse(null), reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
-  }
-
-  @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) void delete(@PathVariable Long id, @AuthenticationPrincipal User author) {
-   HomeRecipe recipe = owned(findRecipe(id), author); if (recipes.existsByRepeatedFromId(id)) throw conflict("No podés borrar una receta que tiene preparaciones repetidas"); recipes.delete(recipe);
+ private Recipe findRecipe(Long id) { return recipes.findById(id).orElseThrow(() -> notFound("Receta")); }
+ private Cooking findCooking(Long id) { return cookings.findDetailedById(id).orElseThrow(() -> notFound("Preparación")); }
+ private void apply(Recipe recipe, RecipeRequest request) {
+  recipe.name = request.name().trim(); recipe.sourceUrl = blankToNull(request.sourceUrl()); recipe.ingredients.clear(); recipe.steps.clear();
+  for (int position = 0; position < request.ingredients().size(); position++) { RecipeIngredientRequest source = request.ingredients().get(position); RecipeIngredient ingredient = new RecipeIngredient(); ingredient.recipe = recipe; ingredient.name = source.name().trim(); ingredient.quantity = source.quantity(); ingredient.unit = source.unit().trim(); ingredient.position = position; recipe.ingredients.add(ingredient); }
+  for (int position = 0; position < request.steps().size(); position++) { RecipeStepRequest source = request.steps().get(position); RecipeStep step = new RecipeStep(); step.recipe = recipe; step.instruction = source.instruction().trim(); step.position = position; recipe.steps.add(step); }
  }
-
-  @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE) @Transactional HomeRecipeDto uploadPhoto(@PathVariable Long id, @RequestPart("file") MultipartFile file, @AuthenticationPrincipal User author) throws IOException {
-   HomeRecipe recipe = owned(findRecipe(id), author); photos.findByRecipeId(id).ifPresent(photos::delete); photos.flush(); HomeRecipePhoto photo = photos.save(storage.store(recipe, file));
-   return recipe(recipe, photo, reviewMap(List.of(recipe)).getOrDefault(id, List.of()), recipes.findByRepeatedFromIdOrderByPreparedOnDescIdDesc(id).stream().map(HomeRecipeApi::reference).toList());
+ private static void apply(Cooking cooking, CookingRequest request) { cooking.home = request.home(); cooking.servings = request.servings(); cooking.cookedOn = request.cookedOn(); cooking.mealType = request.mealType(); }
+ private CookingDto cooking(Cooking value) {
+  List<CookingPhotoDto> cookingPhotos = photos.findByCookingIdOrderByPositionAscIdAsc(value.id).stream().map(HomeRecipeApi::photo).toList(); CookingPhotoDto cover = cookingPhotos.stream().filter(photo -> photo.id().equals(value.coverPhotoId)).findFirst().orElse(cookingPhotos.isEmpty() ? null : cookingPhotos.getFirst());
+  return new CookingDto(value.id, recipe(value.recipe), value.home, value.servings, value.cookedOn, value.mealType, value.createdBy.username, value.updatedBy.username, cover, cookingPhotos, reviews.findByCookingIdOrderByAuthorUsername(value.id).stream().map(HomeRecipeApi::review).toList(), value.createdAt, value.updatedAt);
  }
-
- @PutMapping("/{id}/reviews/me") @Transactional HomeRecipeReviewDto saveReview(@PathVariable Long id, @RequestBody @Valid HomeRecipeReviewRequest request, @AuthenticationPrincipal User author) {
-  HomeRecipe recipe = findRecipe(id);
-  HomeRecipeReview review = reviews.findByRecipeIdAndAuthorId(id, author.id).orElseGet(() -> { HomeRecipeReview value = new HomeRecipeReview(); value.recipe = recipe; value.author = author; value.createdAt = Instant.now(); return value; });
-  review.rating = request.rating(); review.comment = blankToNull(request.comment()); review.updatedAt = Instant.now();
-  return review(reviews.save(review));
- }
-
- @PutMapping("/{recipeId}/reviews/{reviewId}") @Transactional HomeRecipeReviewDto updateReview(@PathVariable Long recipeId, @PathVariable Long reviewId, @RequestBody @Valid HomeRecipeReviewRequest request, @AuthenticationPrincipal User author) {
-  HomeRecipeReview review = reviews.findById(reviewId).filter(value -> value.recipe.id.equals(recipeId)).orElseThrow(() -> notFound("Reseña"));
-  if (author.role != Role.ADMIN && !review.author.id.equals(author.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
-  review.rating = request.rating(); review.comment = blankToNull(request.comment()); review.updatedAt = Instant.now();
-  return review(reviews.save(review));
- }
-
- @GetMapping(value = "/{id}/photo", produces = "image/webp") ResponseEntity<byte[]> photo(@PathVariable Long id, @RequestParam(defaultValue = "false") boolean thumbnail) {
-  HomeRecipePhoto photo = photos.findByRecipeId(id).orElseThrow(() -> notFound("Foto"));
-  return ResponseEntity.ok().cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePublic()).contentType(MediaType.valueOf("image/webp")).body(storage.bytes(thumbnail ? photo.thumbnailBase64 : photo.imageBase64));
- }
-
- private HomeRecipe findRecipe(Long id) { return recipes.findById(id).orElseThrow(() -> notFound("Receta")); }
- private Map<Long, HomeRecipePhoto> photoMap(List<HomeRecipe> values) {
-  if (values.isEmpty()) return Map.of();
-  return photos.findByRecipeIdIn(values.stream().map(recipe -> recipe.id).toList()).stream().collect(java.util.stream.Collectors.toMap(photo -> photo.recipe.id, photo -> photo));
- }
- private Map<Long, List<HomeRecipeReviewDto>> reviewMap(List<HomeRecipe> values) {
-  if (values.isEmpty()) return Map.of();
-  return reviews.findByRecipeIdInOrderByAuthorUsername(values.stream().map(recipe -> recipe.id).toList()).stream().collect(java.util.stream.Collectors.groupingBy(review -> review.recipe.id, java.util.stream.Collectors.mapping(HomeRecipeApi::review, java.util.stream.Collectors.toList())));
- }
-  private void apply(HomeRecipe recipe, HomeRecipeRequest request) {
-   if (request.preparedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una receta preparada no puede quedar en el futuro");
-   HomeRecipe repeatedFrom = request.repeatedFromId() == null ? null : findRecipe(request.repeatedFromId());
-   if (repeatedFrom != null && recipe.id != null && repeatedFrom.id.equals(recipe.id)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una receta no puede repetirse a sí misma");
-   recipe.home = request.home(); recipe.name = request.name().trim(); recipe.servings = request.servings(); recipe.recipeUrl = blankToNull(request.recipeUrl()); recipe.preparedOn = request.preparedOn(); recipe.mealType = request.mealType(); recipe.repeatedFrom = repeatedFrom; recipe.ingredients.clear(); recipe.steps.clear();
-   for (int index = 0; index < request.ingredients().size(); index++) { HomeRecipeIngredientRequest source = request.ingredients().get(index); HomeRecipeIngredient ingredient = new HomeRecipeIngredient(); ingredient.recipe = recipe; ingredient.name = source.name().trim(); ingredient.quantity = source.quantity(); ingredient.unit = source.unit().trim(); ingredient.position = index; recipe.ingredients.add(ingredient); }
-   for (int index = 0; index < request.steps().size(); index++) { HomeRecipeStepRequest source = request.steps().get(index); HomeRecipeStep step = new HomeRecipeStep(); step.recipe = recipe; step.instruction = source.instruction().trim(); step.position = index; recipe.steps.add(step); }
-  }
-  private static HomeRecipeDto recipe(HomeRecipe value, HomeRecipePhoto photo, List<HomeRecipeReviewDto> reviews, List<HomeRecipeReferenceDto> repetitions) {
-   return new HomeRecipeDto(value.id, value.home, value.name, value.servings, value.recipeUrl, value.preparedOn, value.mealType, value.ingredients.stream().map(ingredient -> new HomeRecipeIngredientDto(ingredient.name, ingredient.quantity, ingredient.unit)).toList(), value.steps.stream().map(step -> new HomeRecipeStepDto(step.instruction)).toList(), value.repeatedFrom == null ? null : reference(value.repeatedFrom), repetitions, value.author.username, photo == null ? null : "/how-cook/" + value.id + "/photo?v=" + photo.id, photo == null ? null : "/how-cook/" + value.id + "/photo?thumbnail=true&v=" + photo.id, photo == null ? null : photo.width, photo == null ? null : photo.height, reviews, value.createdAt);
-  }
- private HomeRecipePhoto copyPhoto(HomeRecipe recipe, HomeRecipePhoto source) {
-  HomeRecipePhoto copy = new HomeRecipePhoto(); copy.recipe = recipe; copy.imageBase64 = source.imageBase64; copy.thumbnailBase64 = source.thumbnailBase64; copy.width = source.width; copy.height = source.height; copy.createdAt = Instant.now();
-  return photos.save(copy);
- }
-  private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
-  private static HomeRecipeReferenceDto reference(HomeRecipe value) { return new HomeRecipeReferenceDto(value.id, value.name); }
- private static HomeRecipeReviewDto review(HomeRecipeReview value) { return new HomeRecipeReviewDto(value.id, value.author.username, value.rating, value.comment, value.updatedAt); }
-  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
-  private static ResponseStatusException conflict(String detail) { return new ResponseStatusException(HttpStatus.CONFLICT, detail); }
- private static HomeRecipe owned(HomeRecipe recipe, User user) { if (user.role != Role.ADMIN && !recipe.author.id.equals(user.id)) throw new ResponseStatusException(HttpStatus.FORBIDDEN); return recipe; }
+ private static RecipeDto recipe(Recipe value) { return new RecipeDto(value.id, value.name, value.sourceUrl, value.ingredients.stream().map(ingredient -> new RecipeIngredientDto(ingredient.name, ingredient.quantity, ingredient.unit)).toList(), value.steps.stream().map(step -> new RecipeStepDto(step.instruction)).toList(), value.createdBy.username, value.updatedBy.username, value.createdAt, value.updatedAt); }
+ private static CookingPhotoDto photo(CookingPhoto value) { return new CookingPhotoDto(value.id, "/how-cook/cooking-photos/" + value.id, "/how-cook/cooking-photos/" + value.id + "?thumbnail=true", value.width, value.height, value.position, value.createdBy.username, value.createdAt); }
+ private static CookingReviewDto review(CookingReview value) { return new CookingReviewDto(value.id, value.author.username, value.updatedBy.username, value.rating, value.comment, value.createdAt, value.updatedAt); }
+ private static void apply(CookingReview review, CookingReviewRequest request) { review.rating = request.rating(); review.comment = blankToNull(request.comment()); }
+ private static void validateCookingDate(CookingRequest request) { if (request.cookedOn().isAfter(LocalDate.now())) throw badRequest("Una preparación no puede quedar en el futuro"); }
+ private static String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+ private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrada"); }
+ private static ResponseStatusException badRequest(String detail) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, detail); }
+ private static ResponseStatusException conflict(String detail) { return new ResponseStatusException(HttpStatus.CONFLICT, detail); }
 }

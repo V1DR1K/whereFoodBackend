@@ -18,7 +18,8 @@ public class Film {
  @Column(nullable = false) public int watchedCount;
  public LocalDate lastWatchedOn;
  @ManyToMany @JoinTable(name = "film_genres", joinColumns = @JoinColumn(name = "film_id"), inverseJoinColumns = @JoinColumn(name = "genre_id")) public Set<FilmGenreOption> genres = new LinkedHashSet<>();
- @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by") public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by") public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "updated_by") public User updatedBy;
  public Instant createdAt;
  public Instant updatedAt;
 }

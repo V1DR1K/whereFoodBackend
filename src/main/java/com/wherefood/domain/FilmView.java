@@ -8,7 +8,8 @@ import java.time.*;
 public class FilmView {
  @Id @GeneratedValue(strategy = GenerationType.IDENTITY) public Long id;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "film_id") public Film film;
- @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by") public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by") public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "updated_by") public User updatedBy;
  @Column(nullable = false) public LocalDate watchedOn;
  @Column(name = "watched_at") public LocalTime watchedAt;
  public Instant createdAt;

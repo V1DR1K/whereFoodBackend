@@ -12,7 +12,8 @@ public class WhyFunVenue {
  @Column(nullable = false) public String address;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "category_id", nullable = false) public WhyFunCategory category;
  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "subcategory_id", nullable = false) public WhyFunCategory subcategory;
- @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by", nullable = false) public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "created_by", nullable = false) public User createdBy;
+  @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "updated_by", nullable = false) public User updatedBy;
  @Column(name = "scheduled_at") public LocalDateTime scheduledAt;
  @Column(name = "cover_photo_id") public Long coverPhotoId;
  @OneToMany(mappedBy = "venue", cascade = CascadeType.ALL, orphanRemoval = true) public List<WhyFunVenueSchedule> schedules = new ArrayList<>();

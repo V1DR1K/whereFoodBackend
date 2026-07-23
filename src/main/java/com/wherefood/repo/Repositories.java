@@ -32,12 +32,27 @@ public final class Repositories {
   Long getPlaceId(); Double getVenueAverage();
  }
 
-  public interface PlaceVisits extends JpaRepository<PlaceVisit, Long> {
-     @EntityGraph(attributePaths = {"place", "createdBy"}) List<PlaceVisit> findByPlaceIdOrderByVisitedOnDescIdDesc(Long placeId);
-     @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findByPlaceIdAndVisitedOn(Long placeId, LocalDate visitedOn);
-     boolean existsByPlaceId(Long placeId);
-   @EntityGraph(attributePaths = {"place", "createdBy"}) Optional<PlaceVisit> findDetailedById(Long id);
-  }
+    public interface PlaceVisits extends JpaRepository<PlaceVisit, Long> {
+       @EntityGraph(attributePaths = {"place", "createdBy", "updatedBy"}) List<PlaceVisit> findByPlaceIdOrderByVisitedOnDescIdDesc(Long placeId);
+       @EntityGraph(attributePaths = {"place", "createdBy", "updatedBy"}) List<PlaceVisit> findByPlaceIdInOrderByPlaceIdAscVisitedOnDescIdDesc(Collection<Long> placeIds);
+       @EntityGraph(attributePaths = {"place", "createdBy", "updatedBy"}) Optional<PlaceVisit> findByPlaceIdAndVisitedOn(Long placeId, LocalDate visitedOn);
+      boolean existsByPlaceId(Long placeId);
+    @EntityGraph(attributePaths = {"place", "createdBy", "updatedBy"}) Optional<PlaceVisit> findDetailedById(Long id);
+   }
+
+    public interface PlaceVisitPhotos extends JpaRepository<PlaceVisitPhoto, Long> {
+     @EntityGraph(attributePaths = {"visit", "visit.place", "createdBy"}) List<PlaceVisitPhoto> findByVisitIdOrderByPositionAscIdAsc(Long visitId);
+     @EntityGraph(attributePaths = {"visit", "visit.place", "createdBy"}) List<PlaceVisitPhoto> findByVisitIdInOrderByVisitIdAscPositionAscIdAsc(Collection<Long> visitIds);
+    @EntityGraph(attributePaths = {"visit", "visit.place", "createdBy"}) Optional<PlaceVisitPhoto> findDetailedById(Long id);
+    long countByVisitId(Long visitId);
+   }
+
+    public interface PlaceVisitReviews extends JpaRepository<PlaceVisitReview, Long> {
+     @EntityGraph(attributePaths = {"author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdOrderByAuthorUsername(Long visitId);
+     @EntityGraph(attributePaths = {"author", "updatedBy"}) List<PlaceVisitReview> findByVisitIdInOrderByVisitIdAscAuthorUsername(Collection<Long> visitIds);
+    @EntityGraph(attributePaths = {"visit", "visit.place", "author", "updatedBy"}) Optional<PlaceVisitReview> findDetailedById(Long id);
+    Optional<PlaceVisitReview> findByVisitIdAndAuthorId(Long visitId, Long authorId);
+   }
 
   public interface Items extends JpaRepository<Item, Long> {
    @Override @EntityGraph(attributePaths = {"createdBy", "visit", "visit.place", "reviews", "reviews.author"}) Optional<Item> findById(Long id);
@@ -56,9 +71,10 @@ public final class Repositories {
    @Query("select r.place.id as placeId, avg((coalesce(r.location, 0) + coalesce(r.heating, 0) + coalesce(r.bathrooms, 0) + coalesce(r.exterior, 0) + coalesce(r.seating, 0) + coalesce(r.service, 0) + coalesce(r.ambiance, 0)) / (case when r.location is null then 0 else 1 end + case when r.heating is null then 0 else 1 end + case when r.bathrooms is null then 0 else 1 end + case when r.exterior is null then 0 else 1 end + case when r.seating is null then 0 else 1 end + case when r.service is null then 0 else 1 end + case when r.ambiance is null then 0 else 1 end)) as venueAverage from PlaceReview r where r.place.id in :ids group by r.place.id") List<VenueMetric> venueMetrics(@Param("ids") Collection<Long> ids);
  }
 
-  public interface PlacePhotos extends JpaRepository<PlacePhoto, Long> {
-  Optional<PlacePhoto> findByPlaceId(Long placeId);
- }
+   public interface PlacePhotos extends JpaRepository<PlacePhoto, Long> {
+   Optional<PlacePhoto> findByPlaceId(Long placeId);
+   @EntityGraph(attributePaths = "place") List<PlacePhoto> findByPlaceIdIn(Collection<Long> placeIds);
+  }
 
  public interface FilmPhotos extends JpaRepository<FilmPhoto, Long> {
   Optional<FilmPhoto> findByFilmId(Long filmId);
@@ -90,11 +106,17 @@ public final class Repositories {
     boolean existsByViewIdAndAuthorId(Long viewId, Long authorId);
   }
 
-  public interface FilmViews extends JpaRepository<FilmView, Long> {
-    @EntityGraph(attributePaths = "createdBy") List<FilmView> findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(Long filmId);
-    @EntityGraph(attributePaths = "createdBy") Optional<FilmView> findByIdAndFilmId(Long id, Long filmId);
-    Optional<FilmView> findByFilmIdAndWatchedOnAndWatchedAt(Long filmId, LocalDate watchedOn, LocalTime watchedAt);
-  }
+   public interface FilmViews extends JpaRepository<FilmView, Long> {
+     @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) List<FilmView> findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(Long filmId);
+     @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) Optional<FilmView> findByIdAndFilmId(Long id, Long filmId);
+     Optional<FilmView> findByFilmIdAndWatchedOnAndWatchedAt(Long filmId, LocalDate watchedOn, LocalTime watchedAt);
+   }
+
+   public interface FilmViewPhotos extends JpaRepository<FilmViewPhoto, Long> {
+    @EntityGraph(attributePaths = {"view", "view.film", "createdBy"}) List<FilmViewPhoto> findByViewIdOrderByPositionAscIdAsc(Long viewId);
+    @EntityGraph(attributePaths = {"view", "view.film", "createdBy"}) Optional<FilmViewPhoto> findDetailedById(Long id);
+    long countByViewId(Long viewId);
+   }
 
   public interface HomeRecipes extends JpaRepository<HomeRecipe, Long> {
     @EntityGraph(attributePaths = {"author", "ingredients", "steps", "repeatedFrom"}) List<HomeRecipe> findByHomeOrderByPreparedOnDescIdDesc(Home home);
@@ -139,9 +161,52 @@ public final class Repositories {
    Long getId(); Long getVenueId(); String getAuthor(); Short getRating(); String getComment(); java.time.Instant getUpdatedAt();
   }
 
-  public interface WhyFunVenueReviews extends JpaRepository<WhyFunVenueReview, Long> {
+   public interface WhyFunVenueReviews extends JpaRepository<WhyFunVenueReview, Long> {
    @Query("select r.id as id, r.venue.id as venueId, u.username as author, r.rating as rating, r.comment as comment, r.updatedAt as updatedAt from WhyFunVenueReview r join r.author u where r.venue.id=:venueId order by u.username") List<WhyFunReviewSummary> summariesByVenueId(@Param("venueId") Long venueId);
    @Query("select r.id as id, r.venue.id as venueId, u.username as author, r.rating as rating, r.comment as comment, r.updatedAt as updatedAt from WhyFunVenueReview r join r.author u where r.venue.id in :venueIds order by r.venue.id asc, u.username") List<WhyFunReviewSummary> summariesByVenueIdIn(@Param("venueIds") Collection<Long> venueIds);
    @EntityGraph(attributePaths = "author") Optional<WhyFunVenueReview> findByVenueIdAndAuthorId(Long venueId, Long authorId);
-  }
+   }
+
+   public interface WhyFunVisits extends JpaRepository<WhyFunVisit, Long> {
+    @EntityGraph(attributePaths = {"venue", "venue.category", "venue.subcategory", "createdBy", "updatedBy"}) List<WhyFunVisit> findByVenueIdOrderByScheduledAtDescIdDesc(Long venueId);
+    @EntityGraph(attributePaths = {"venue", "venue.category", "venue.subcategory", "venue.schedules", "createdBy", "updatedBy"}) Optional<WhyFunVisit> findDetailedById(Long id);
+    @Override @EntityGraph(attributePaths = {"venue", "venue.category", "venue.subcategory", "createdBy", "updatedBy"}) List<WhyFunVisit> findAll();
+   }
+
+   public interface WhyFunVisitPhotos extends JpaRepository<WhyFunVisitPhoto, Long> {
+    @EntityGraph(attributePaths = {"visit", "visit.venue", "createdBy"}) List<WhyFunVisitPhoto> findByVisitIdOrderByPositionAscIdAsc(Long visitId);
+    @EntityGraph(attributePaths = {"visit", "visit.venue", "createdBy"}) Optional<WhyFunVisitPhoto> findDetailedById(Long id);
+    long countByVisitId(Long visitId);
+   }
+
+   public interface WhyFunVisitReviews extends JpaRepository<WhyFunVisitReview, Long> {
+    @EntityGraph(attributePaths = {"author", "updatedBy"}) List<WhyFunVisitReview> findByVisitIdOrderByAuthorUsername(Long visitId);
+    @EntityGraph(attributePaths = {"visit", "visit.venue", "author", "updatedBy"}) Optional<WhyFunVisitReview> findDetailedById(Long id);
+    Optional<WhyFunVisitReview> findByVisitIdAndAuthorId(Long visitId, Long authorId);
+   }
+
+   public interface Recipes extends JpaRepository<Recipe, Long> {
+    @Override @EntityGraph(attributePaths = {"createdBy", "updatedBy", "ingredients", "steps"}) Optional<Recipe> findById(Long id);
+    @Override @EntityGraph(attributePaths = {"createdBy", "updatedBy", "ingredients", "steps"}) List<Recipe> findAll();
+   }
+
+   public interface Cookings extends JpaRepository<Cooking, Long> {
+    @Override @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) List<Cooking> findAll();
+    @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) List<Cooking> findByHomeOrderByCookedOnDescIdDesc(Home home);
+    @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) List<Cooking> findByRecipeIdOrderByCookedOnDescIdDesc(Long recipeId);
+    @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) Optional<Cooking> findDetailedById(Long id);
+    boolean existsByRecipeId(Long recipeId);
+   }
+
+   public interface CookingPhotos extends JpaRepository<CookingPhoto, Long> {
+    @EntityGraph(attributePaths = {"cooking", "cooking.recipe", "createdBy"}) List<CookingPhoto> findByCookingIdOrderByPositionAscIdAsc(Long cookingId);
+    @EntityGraph(attributePaths = {"cooking", "cooking.recipe", "createdBy"}) Optional<CookingPhoto> findDetailedById(Long id);
+    long countByCookingId(Long cookingId);
+   }
+
+   public interface CookingReviews extends JpaRepository<CookingReview, Long> {
+    @EntityGraph(attributePaths = {"author", "updatedBy"}) List<CookingReview> findByCookingIdOrderByAuthorUsername(Long cookingId);
+    @EntityGraph(attributePaths = {"cooking", "cooking.recipe", "author", "updatedBy"}) Optional<CookingReview> findDetailedById(Long id);
+    Optional<CookingReview> findByCookingIdAndAuthorId(Long cookingId, Long authorId);
+   }
 }

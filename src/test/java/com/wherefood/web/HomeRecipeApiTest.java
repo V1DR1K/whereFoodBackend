@@ -6,100 +6,35 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.wherefood.domain.Home;
-import com.wherefood.domain.HomeRecipe;
-import com.wherefood.domain.HomeRecipeReview;
-import com.wherefood.domain.MealType;
-import com.wherefood.domain.User;
-import com.wherefood.repo.Repositories.HomeRecipePhotos;
-import com.wherefood.repo.Repositories.HomeRecipeReviews;
-import com.wherefood.repo.Repositories.HomeRecipes;
-import java.time.Instant;
-import java.time.LocalDate;
+import com.wherefood.domain.*;
+import com.wherefood.repo.Repositories.*;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class HomeRecipeApiTest {
-  @Test
-  void letsTheAuthorUpdateARecipe() {
-    HomeRecipes recipes = mock(HomeRecipes.class);
-    HomeRecipePhotos photos = mock(HomeRecipePhotos.class);
-    HomeRecipeReviews reviews = mock(HomeRecipeReviews.class);
-    User tomas = new User();
-    tomas.id = 7L;
-    tomas.username = "tomas";
-    HomeRecipe recipe = new HomeRecipe();
-    recipe.id = 2L;
-    recipe.author = tomas;
-    recipe.home = Home.TOMAS;
-    recipe.name = "Panes rellenos";
-    recipe.preparedOn = LocalDate.of(2026, 7, 18);
-    recipe.mealType = MealType.CENA;
-    when(recipes.findById(2L)).thenReturn(Optional.of(recipe));
-    when(recipes.save(recipe)).thenReturn(recipe);
-    when(photos.findByRecipeId(2L)).thenReturn(Optional.empty());
-    when(reviews.findByRecipeIdInOrderByAuthorUsername(List.of(2L))).thenReturn(List.of());
+ @Test
+ void letsAnyAuthenticatedUserUpdateACooking() {
+  Recipes recipes = mock(Recipes.class); Cookings cookings = mock(Cookings.class); CookingPhotos photos = mock(CookingPhotos.class); CookingReviews reviews = mock(CookingReviews.class);
+  User tomas = user(7L, "tomas"), avril = user(6L, "avril"); Recipe recipe = new Recipe(); recipe.id = 3L; recipe.name = "Panes rellenos"; recipe.createdBy = recipe.updatedBy = tomas;
+  Cooking cooking = new Cooking(); cooking.id = 2L; cooking.recipe = recipe; cooking.home = Home.TOMAS; cooking.servings = 2; cooking.cookedOn = LocalDate.of(2026, 7, 18); cooking.mealType = MealType.CENA; cooking.createdBy = cooking.updatedBy = tomas;
+  when(cookings.findDetailedById(2L)).thenReturn(Optional.of(cooking)); when(cookings.save(cooking)).thenReturn(cooking); when(photos.findByCookingIdOrderByPositionAscIdAsc(2L)).thenReturn(List.of()); when(reviews.findByCookingIdOrderByAuthorUsername(2L)).thenReturn(List.of());
 
-    HomeRecipeDto result = new HomeRecipeApi(recipes, photos, reviews, null).update(
-      2L,
-      new HomeRecipeRequest(Home.AVRIL, "Panes rellenos con papas", 2, null, LocalDate.of(2026, 7, 21), MealType.ALMUERZO, List.of(new HomeRecipeIngredientRequest("Papa", BigDecimal.valueOf(300), "g")), List.of(new HomeRecipeStepRequest("Hornear hasta dorar.")), null),
-      tomas
-    );
+  CookingDto result = new HomeRecipeApi(recipes, cookings, photos, reviews, null).updateCooking(2L, new CookingRequest(Home.AVRIL, 4, LocalDate.of(2026, 7, 21), MealType.ALMUERZO), avril);
 
-    assertEquals("Panes rellenos con papas", result.name());
-    assertEquals("tomas", result.author());
-    verify(recipes).save(recipe);
-  }
+  assertEquals(Home.AVRIL, result.home()); assertEquals("avril", result.updatedBy()); verify(cookings).save(cooking);
+ }
 
-  @Test
-  void savesOneReviewPerUserForEachRecipe() {
-    HomeRecipes recipes = mock(HomeRecipes.class);
-    HomeRecipePhotos photos = mock(HomeRecipePhotos.class);
-    HomeRecipeReviews reviews = mock(HomeRecipeReviews.class);
-    User avril = new User();
-    avril.id = 6L;
-    avril.username = "avril";
-    HomeRecipe recipe = new HomeRecipe();
-    recipe.id = 2L;
-    when(recipes.findById(2L)).thenReturn(Optional.of(recipe));
-    when(reviews.findByRecipeIdAndAuthorId(2L, 6L)).thenReturn(Optional.empty());
-    when(reviews.save(any(HomeRecipeReview.class))).thenAnswer(invocation -> invocation.getArgument(0));
+ @Test
+ void createsAReusableRecipeDefinition() {
+  Recipes recipes = mock(Recipes.class); User tomas = user(7L, "tomas"); when(recipes.save(any(Recipe.class))).thenAnswer(invocation -> { Recipe value = invocation.getArgument(0); value.id = 5L; return value; });
 
-    HomeRecipeReviewDto result = new HomeRecipeApi(recipes, photos, reviews, null).saveReview(
-      2L,
-      new HomeRecipeReviewRequest((short) 5, "Una cena espectacular"),
-      avril
-    );
+  RecipeDto result = new HomeRecipeApi(recipes, null, null, null, null).addRecipe(new RecipeRequest("Tarta", "https://example.test/tarta", List.of(new RecipeIngredientRequest("Harina", BigDecimal.valueOf(250), "g")), List.of(new RecipeStepRequest("Hornear."))), tomas);
 
-    assertEquals("avril", result.author());
-    assertEquals(5, result.rating());
-    verify(reviews).save(any(HomeRecipeReview.class));
-  }
+  assertEquals(5L, result.id()); assertEquals("Tarta", result.name()); assertEquals(1, result.ingredients().size()); assertEquals("tomas", result.createdBy());
+ }
 
-  @Test
-  void returnsReviewsWithTheRecipe() {
-    HomeRecipes recipes = mock(HomeRecipes.class);
-    HomeRecipePhotos photos = mock(HomeRecipePhotos.class);
-    HomeRecipeReviews reviews = mock(HomeRecipeReviews.class);
-    User tomas = new User();
-    tomas.username = "tomas";
-    HomeRecipe recipe = new HomeRecipe();
-    recipe.id = 2L;
-    recipe.author = tomas;
-    HomeRecipeReview review = new HomeRecipeReview();
-    review.recipe = recipe;
-    review.author = tomas;
-    review.rating = 5;
-    review.updatedAt = Instant.parse("2026-07-21T17:24:00Z");
-    when(recipes.findById(2L)).thenReturn(Optional.of(recipe));
-    when(photos.findByRecipeId(2L)).thenReturn(Optional.empty());
-    when(reviews.findByRecipeIdInOrderByAuthorUsername(List.of(2L))).thenReturn(List.of(review));
-
-    HomeRecipeDto result = new HomeRecipeApi(recipes, photos, reviews, null).get(2L);
-
-    assertEquals(1, result.reviews().size());
-    assertEquals("tomas", result.reviews().getFirst().author());
-  }
+ private static User user(Long id, String username) { User user = new User(); user.id = id; user.username = username; return user; }
 }
