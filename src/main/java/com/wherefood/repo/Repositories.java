@@ -65,9 +65,10 @@ public final class Repositories {
   @EntityGraph(attributePaths = "item") List<ItemPhoto> findByItemIdIn(Collection<Long> ids);
  }
 
- public interface PlaceReviews extends JpaRepository<PlaceReview, Long> {
-  @EntityGraph(attributePaths = "author") List<PlaceReview> findByPlaceIdOrderByAuthorUsername(Long placeId);
-  Optional<PlaceReview> findByPlaceIdAndAuthorId(Long placeId, Long authorId);
+  public interface PlaceReviews extends JpaRepository<PlaceReview, Long> {
+   @EntityGraph(attributePaths = "author") List<PlaceReview> findByPlaceIdOrderByAuthorUsername(Long placeId);
+   @EntityGraph(attributePaths = "author") List<PlaceReview> findByPlaceIdInOrderByPlaceIdAscAuthorUsername(Collection<Long> placeIds);
+   Optional<PlaceReview> findByPlaceIdAndAuthorId(Long placeId, Long authorId);
    @Query("select r.place.id as placeId, avg((coalesce(r.location, 0) + coalesce(r.heating, 0) + coalesce(r.bathrooms, 0) + coalesce(r.exterior, 0) + coalesce(r.seating, 0) + coalesce(r.service, 0) + coalesce(r.ambiance, 0)) / (case when r.location is null then 0 else 1 end + case when r.heating is null then 0 else 1 end + case when r.bathrooms is null then 0 else 1 end + case when r.exterior is null then 0 else 1 end + case when r.seating is null then 0 else 1 end + case when r.service is null then 0 else 1 end + case when r.ambiance is null then 0 else 1 end)) as venueAverage from PlaceReview r where r.place.id in :ids group by r.place.id") List<VenueMetric> venueMetrics(@Param("ids") Collection<Long> ids);
  }
 
@@ -100,22 +101,16 @@ public final class Repositories {
   Optional<Film> findByTmdbId(Long tmdbId);
  }
 
-  public interface FilmReviews extends JpaRepository<FilmReview, Long> {
+    public interface FilmReviews extends JpaRepository<FilmReview, Long> {
     @EntityGraph(attributePaths = {"author", "metrics", "view"}) @Query("select r from FilmReview r where r.film.id=:filmId order by r.view.watchedOn desc, r.id desc") List<FilmReview> findByFilmIdOrderByViewWatchedOnDescIdDesc(@Param("filmId") Long filmId);
-    @EntityGraph(attributePaths = {"author", "metrics", "view"}) Optional<FilmReview> findByIdAndFilmId(Long id, Long filmId);
+     @EntityGraph(attributePaths = {"author", "metrics", "view", "film"}) Optional<FilmReview> findByIdAndFilmId(Long id, Long filmId);
     boolean existsByViewIdAndAuthorId(Long viewId, Long authorId);
   }
 
-   public interface FilmViews extends JpaRepository<FilmView, Long> {
-     @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) List<FilmView> findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(Long filmId);
-     @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) Optional<FilmView> findByIdAndFilmId(Long id, Long filmId);
-     Optional<FilmView> findByFilmIdAndWatchedOnAndWatchedAt(Long filmId, LocalDate watchedOn, LocalTime watchedAt);
-   }
-
-   public interface FilmViewPhotos extends JpaRepository<FilmViewPhoto, Long> {
-    @EntityGraph(attributePaths = {"view", "view.film", "createdBy"}) List<FilmViewPhoto> findByViewIdOrderByPositionAscIdAsc(Long viewId);
-    @EntityGraph(attributePaths = {"view", "view.film", "createdBy"}) Optional<FilmViewPhoto> findDetailedById(Long id);
-    long countByViewId(Long viewId);
+    public interface FilmViews extends JpaRepository<FilmView, Long> {
+      @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) List<FilmView> findByFilmIdOrderByWatchedOnDescIdDesc(Long filmId);
+      @EntityGraph(attributePaths = {"createdBy", "updatedBy"}) Optional<FilmView> findByIdAndFilmId(Long id, Long filmId);
+      Optional<FilmView> findByFilmIdAndWatchedOn(Long filmId, LocalDate watchedOn);
    }
 
   public interface HomeRecipes extends JpaRepository<HomeRecipe, Long> {
@@ -201,12 +196,6 @@ public final class Repositories {
     @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) List<Cooking> findByRecipeIdOrderByCookedOnDescIdDesc(Long recipeId);
     @EntityGraph(attributePaths = {"recipe", "recipe.ingredients", "recipe.steps", "createdBy", "updatedBy"}) Optional<Cooking> findDetailedById(Long id);
     boolean existsByRecipeId(Long recipeId);
-   }
-
-   public interface CookingPhotos extends JpaRepository<CookingPhoto, Long> {
-    @EntityGraph(attributePaths = {"cooking", "cooking.recipe", "createdBy"}) List<CookingPhoto> findByCookingIdOrderByPositionAscIdAsc(Long cookingId);
-    @EntityGraph(attributePaths = {"cooking", "cooking.recipe", "createdBy"}) Optional<CookingPhoto> findDetailedById(Long id);
-    long countByCookingId(Long cookingId);
    }
 
    public interface CookingReviews extends JpaRepository<CookingReview, Long> {

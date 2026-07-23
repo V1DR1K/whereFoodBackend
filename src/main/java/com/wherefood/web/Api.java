@@ -31,8 +31,8 @@ record ItemReviewDto(String author, String comment, short taste, short price, In
 record ItemDto(Long id, String name, String createdBy, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<ItemReviewDto> reviews, Instant createdAt) {}
 record PlaceVisitSummaryDto(Long id, LocalDate visitedOn, String createdBy, Instant createdAt) {}
 record PlaceVisitPhotoDto(Long id, String url, String thumbnailUrl, int width, int height, int position, String createdBy, Instant createdAt) {}
-record PlaceVisitReviewRequest(@NotNull @Min(1) @Max(5) Short overall, @Size(max = 2000) String comment, @Min(1) @Max(5) Short taste, @Min(1) @Max(5) Short price, @Min(1) @Max(5) Short location, @Min(1) @Max(5) Short heating, @Min(1) @Max(5) Short bathrooms, @Min(1) @Max(5) Short exterior, @Min(1) @Max(5) Short seating, @Min(1) @Max(5) Short service, @Min(1) @Max(5) Short ambiance) {}
-record PlaceVisitReviewDto(Long id, String author, String updatedBy, short overall, String comment, Short taste, Short price, Short location, Short heating, Short bathrooms, Short exterior, Short seating, Short service, Short ambiance, Instant createdAt, Instant updatedAt) {}
+record PlaceVisitReviewRequest(@NotNull @Min(1) @Max(5) Short overall, @Size(max = 2000) String comment, @Min(1) @Max(5) Short taste, @Min(1) @Max(5) Short price) {}
+record PlaceVisitReviewDto(Long id, String author, String updatedBy, short overall, String comment, Short taste, Short price, Instant createdAt, Instant updatedAt) {}
 record PlaceVisitDto(Long id, Long placeId, LocalDate visitedOn, String createdBy, List<ItemDto> items, List<PlaceVisitPhotoDto> photos, PlaceVisitPhotoDto coverPhoto, List<PlaceVisitReviewDto> reviews, String updatedBy, Instant createdAt, Instant updatedAt) {}
 record PlaceDto(Long id, String name, String address, String sourceUrl, String mapsUrl, PlaceStatus status, CategoryDto category, List<HighlightTagDto> tags, String author, double rating, double tasteAverage, double priceAverage, double venueAverage, long itemCount, String photoUrl, String thumbnailUrl, Integer photoWidth, Integer photoHeight, List<PlaceReviewDto> reviews, Instant createdAt) {}
 record Slice<T>(List<T> content, Long nextCursor) {}
@@ -141,9 +141,10 @@ public class Api {
    PlaceVisit visit = active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita")));
    List<PlaceVisitPhoto> current = visitPhotos.findByVisitIdOrderByPositionAscIdAsc(id);
    if (current.size() >= MAX_VISIT_PHOTOS) throw new ResponseStatusException(HttpStatus.CONFLICT, "Cada visita admite hasta " + MAX_VISIT_PHOTOS + " fotos");
-   PlaceVisitPhoto photo = visitPhotos.save(storage.store(visit, author, current.isEmpty() ? 0 : current.getLast().position + 1, file));
+   PlaceVisitPhoto photo = visitPhotos.saveAndFlush(storage.store(visit, author, current.isEmpty() ? 0 : current.getLast().position + 1, file));
    if (visit.coverPhotoId == null) { visit.coverPhotoId = photo.id; visit.updatedBy = author; visit.updatedAt = Instant.now(); visits.save(visit); }
-   return visit(visit);
+   List<PlaceVisitPhoto> responsePhotos = new ArrayList<>(current); responsePhotos.add(photo);
+   return visit(visit, responsePhotos);
   }
   @PutMapping("/place-visits/{id}/cover/{photoId}") @org.springframework.transaction.annotation.Transactional PlaceVisitDto setVisitCover(@PathVariable Long id, @PathVariable Long photoId, @AuthenticationPrincipal User author) {
    PlaceVisit visit = active(visits.findDetailedById(id).orElseThrow(() -> notFound("Visita")));
@@ -182,16 +183,18 @@ public class Api {
    Map<Long, List<PlaceVisit>> visitsByPlace = allVisits.stream().collect(java.util.stream.Collectors.groupingBy(visit -> visit.place.id, LinkedHashMap::new, java.util.stream.Collectors.toList()));
    List<Long> visitIds = allVisits.stream().map(visit -> visit.id).toList();
    Map<Long, List<PlaceVisitReview>> reviewsByVisit = visitIds.isEmpty() ? Map.of() : visitReviews.findByVisitIdInOrderByVisitIdAscAuthorUsername(visitIds).stream().collect(java.util.stream.Collectors.groupingBy(review -> review.visit.id));
+   Map<Long, List<PlaceReview>> reviewsByPlace = reviews.findByPlaceIdInOrderByPlaceIdAscAuthorUsername(placeIds).stream().collect(java.util.stream.Collectors.groupingBy(review -> review.place.id));
    Map<Long, List<PlaceVisitPhoto>> photosByVisit = visitIds.isEmpty() ? Map.of() : visitPhotos.findByVisitIdInOrderByVisitIdAscPositionAscIdAsc(visitIds).stream().collect(java.util.stream.Collectors.groupingBy(photo -> photo.visit.id));
    Map<Long, PlacePhoto> legacyPhotos = placePhotos.findByPlaceIdIn(placeIds).stream().collect(java.util.stream.Collectors.toMap(photo -> photo.place.id, photo -> photo));
    Map<Long, PlaceSummary> result = new HashMap<>();
    for (Place place : values) {
     List<PlaceVisit> placeVisits = visitsByPlace.getOrDefault(place.id, List.of());
-    List<PlaceVisitReview> placeReviews = placeVisits.stream().flatMap(visit -> reviewsByVisit.getOrDefault(visit.id, List.of()).stream()).toList();
+    List<PlaceVisitReview> visitReviewsForPlace = placeVisits.stream().flatMap(visit -> reviewsByVisit.getOrDefault(visit.id, List.of()).stream()).toList();
+    List<PlaceReview> placeReviews = reviewsByPlace.getOrDefault(place.id, List.of());
     PlaceVisitPhoto cover = placeVisits.stream().map(visit -> photosByVisit.getOrDefault(visit.id, List.of()).stream().filter(photo -> photo.id.equals(visit.coverPhotoId)).findFirst().orElseGet(() -> photosByVisit.getOrDefault(visit.id, List.of()).stream().findFirst().orElse(null))).filter(Objects::nonNull).findFirst().orElse(null);
-    double rating = placeReviews.stream().mapToInt(review -> review.overall).average().orElse(0);
-    double taste = placeReviews.stream().map(review -> review.taste).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0);
-    double price = placeReviews.stream().map(review -> review.price).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0);
+    double rating = visitReviewsForPlace.stream().mapToInt(review -> review.overall).average().orElse(0);
+    double taste = visitReviewsForPlace.stream().map(review -> review.taste).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0);
+    double price = visitReviewsForPlace.stream().map(review -> review.price).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0);
     double venue = placeReviews.stream().flatMap(review -> java.util.stream.Stream.of(review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance)).filter(Objects::nonNull).mapToInt(Short::intValue).average().orElse(0);
     result.put(place.id, new PlaceSummary(rating, taste, price, venue, placeVisits.size(), cover, legacyPhotos.get(place.id), placeReviews.stream().map(Api::review).toList()));
    }
@@ -212,10 +215,10 @@ public class Api {
  private static double round(double value) { return Math.round(value * 10) / 10d; }
  private void apply(Place place, PlaceRequest request) { place.name = request.name(); place.address = request.address(); place.sourceUrl = request.sourceUrl(); place.mapsUrl = request.mapsUrl(); place.highlightTags.clear(); if (request.tagIds() != null && !request.tagIds().isEmpty()) { Set<Long> ids = new LinkedHashSet<>(request.tagIds()); List<HighlightTag> selected = highlightTags.findAllById(ids); if (selected.size() != ids.size()) throw notFound("Etiqueta"); place.highlightTags.addAll(selected); } }
   private static void apply(PlaceReview review, PlaceReviewRequest request) { if (java.util.stream.Stream.of(request.location(), request.heating(), request.bathrooms(), request.exterior(), request.seating(), request.service(), request.ambiance()).allMatch(Objects::isNull)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Calificá al menos un aspecto del lugar"); review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.location = request.location(); review.heating = request.heating(); review.bathrooms = request.bathrooms(); review.exterior = request.exterior(); review.seating = request.seating(); review.service = request.service(); review.ambiance = request.ambiance(); }
-  private PlaceVisitDto visit(PlaceVisit visit) {
+  private PlaceVisitDto visit(PlaceVisit visit) { return visit(visit, visitPhotos.findByVisitIdOrderByPositionAscIdAsc(visit.id)); }
+  private PlaceVisitDto visit(PlaceVisit visit, List<PlaceVisitPhoto> currentPhotos) {
    List<Item> visitItems = items.findByVisitIdAndDeletedAtIsNullOrderByIdDesc(visit.id);
    Map<Long, ItemPhoto> photoMap = photos.findByItemIdIn(visitItems.stream().map(item -> item.id).toList()).stream().filter(photo -> photo.item != null && photo.item.id != null).collect(java.util.stream.Collectors.toMap(photo -> photo.item.id, photo -> photo, (first, ignored) -> first));
-   List<PlaceVisitPhoto> currentPhotos = visitPhotos.findByVisitIdOrderByPositionAscIdAsc(visit.id);
    List<PlaceVisitPhotoDto> resultPhotos = currentPhotos.stream().map(Api::visitPhoto).toList();
    PlaceVisitPhotoDto cover = resultPhotos.stream().filter(photo -> photo.id().equals(visit.coverPhotoId)).findFirst().orElse(resultPhotos.isEmpty() ? null : resultPhotos.getFirst());
    List<PlaceVisitReviewDto> currentReviews = visitReviews.findByVisitIdOrderByAuthorUsername(visit.id).stream().map(Api::visitReview).toList();
@@ -227,8 +230,7 @@ public class Api {
   private static PlaceVisitSummaryDto visitSummary(PlaceVisit visit) { return new PlaceVisitSummaryDto(visit.id, visit.visitedOn, visit.createdBy.username, visit.createdAt); }
   private static ItemReviewDto itemReview(ItemReview review) { return new ItemReviewDto(review.author.username, review.comment, review.taste, review.price, review.createdAt, review.updatedAt); }
   private static PlaceVisitPhotoDto visitPhoto(PlaceVisitPhoto photo) { return new PlaceVisitPhotoDto(photo.id, "/place-visit-photos/" + photo.id, "/place-visit-photos/" + photo.id + "?thumbnail=true", photo.width, photo.height, photo.position, photo.createdBy.username, photo.createdAt); }
-  private static PlaceVisitReviewDto visitReview(PlaceVisitReview review) { return new PlaceVisitReviewDto(review.id, review.author.username, review.updatedBy.username, review.overall, review.comment, review.taste, review.price, review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance, review.createdAt, review.updatedAt); }
-  private static PlaceReviewDto review(PlaceVisitReview review) { return new PlaceReviewDto(review.author.username, review.comment, review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance); }
+  private static PlaceVisitReviewDto visitReview(PlaceVisitReview review) { return new PlaceVisitReviewDto(review.id, review.author.username, review.updatedBy.username, review.overall, review.comment, review.taste, review.price, review.createdAt, review.updatedAt); }
   private static PlaceReviewDto review(PlaceReview review) { return new PlaceReviewDto(review.author.username, review.comment, review.location, review.heating, review.bathrooms, review.exterior, review.seating, review.service, review.ambiance); }
  private static CategoryDto category(Category category) { return new CategoryDto(category.id, category.name, category.slug, category.icon, category.active); }
  private static HighlightTagDto tag(HighlightTag tag) { return new HighlightTagDto(tag.id, tag.name, tag.emoji); }
@@ -236,10 +238,10 @@ public class Api {
  private static void apply(HighlightTag tag, HighlightTagRequest request) { tag.name = request.name().trim(); tag.emoji = request.emoji().trim(); }
  private static void apply(Item item, ItemRequest request) { item.name = request.name().trim(); item.updatedAt = Instant.now(); if (item.createdAt == null) item.createdAt = item.updatedAt; }
   private static void apply(ItemReview review, ItemReviewRequest request) { review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.taste = request.taste(); review.price = request.price(); }
-  private static void apply(PlaceVisitReview review, PlaceVisitReviewRequest request) { review.overall = request.overall(); review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.taste = request.taste(); review.price = request.price(); review.location = request.location(); review.heating = request.heating(); review.bathrooms = request.bathrooms(); review.exterior = request.exterior(); review.seating = request.seating(); review.service = request.service(); review.ambiance = request.ambiance(); }
+  private static void apply(PlaceVisitReview review, PlaceVisitReviewRequest request) { review.overall = request.overall(); review.comment = request.comment() == null || request.comment().isBlank() ? null : request.comment().trim(); review.taste = request.taste(); review.price = request.price(); }
  private static ResponseStatusException notFound(String type) { return new ResponseStatusException(HttpStatus.NOT_FOUND, type + " no encontrado"); }
  private static Place active(Place place) { if (place.deactivatedAt != null) throw notFound("Lugar"); return place; }
   private static PlaceVisit active(PlaceVisit visit) { active(visit.place); return visit; }
   private static Item active(Item item) { active(item.visit.place); return item; }
-   private static void validateVisitMoment(VisitRequest request) { if (request.visitedOn().isAfter(LocalDate.now())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una visita no puede quedar en el futuro"); }
+   private static void validateVisitMoment(VisitRequest request) { if (request.visitedOn().isAfter(RosarioClock.today())) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Una visita no puede quedar en el futuro"); }
 }

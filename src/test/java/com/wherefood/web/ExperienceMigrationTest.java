@@ -37,6 +37,16 @@ class ExperienceMigrationTest {
    assertTrue(!sql.contains("delete from why_fun_venue_photos"));
   }
 
+  @Test
+  void simplifiesExperiencesWithoutDiscardingTheOnlyProfileImage() throws IOException {
+   String sql = migration("V32__simplify_experiences_and_reviews.sql");
+   assertTrue(sql.contains("alter table film_views drop column watched_at"));
+   assertTrue(sql.contains("drop table film_view_photos"));
+   assertTrue(sql.contains("drop table cooking_photos"));
+   assertTrue(sql.contains("alter table why_fun_visits alter column scheduled_at type date"));
+   assertTrue(sql.contains("alter table place_visit_reviews"));
+  }
+
  private static String migration(String name) throws IOException {
   try (InputStream stream = ExperienceMigrationTest.class.getResourceAsStream("/db/migration/" + name)) { return new String(stream.readAllBytes(), StandardCharsets.UTF_8); }
  }

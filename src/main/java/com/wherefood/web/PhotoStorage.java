@@ -65,18 +65,6 @@ public class PhotoStorage {
    photo.visit = visit; photo.createdBy = author; photo.position = position; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
    return photo;
   }
-  public FilmViewPhoto store(FilmView view, User author, int position, MultipartFile upload) throws IOException {
-   ImageData data = imageData(upload);
-   FilmViewPhoto photo = new FilmViewPhoto();
-   photo.view = view; photo.createdBy = author; photo.position = position; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
-   return photo;
-  }
-  public CookingPhoto store(Cooking cooking, User author, int position, MultipartFile upload) throws IOException {
-   ImageData data = imageData(upload);
-   CookingPhoto photo = new CookingPhoto();
-   photo.cooking = cooking; photo.createdBy = author; photo.position = position; photo.imageBase64 = data.image(); photo.thumbnailBase64 = data.thumbnail(); photo.width = data.width(); photo.height = data.height(); photo.createdAt = Instant.now();
-   return photo;
-  }
  private ImageData imageData(MultipartFile upload) throws IOException {
   if (upload.getSize() > 10 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "Máximo 10 MB");
    byte[] source = upload.getBytes();

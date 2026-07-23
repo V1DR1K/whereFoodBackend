@@ -19,11 +19,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 record FunCategoryRequest(Long parentId, @NotBlank @Size(max = 80) String name, @NotBlank @Size(max = 20) String icon, boolean active) {}
 record FunCategoryDto(Long id, Long parentId, String name, String slug, String icon, boolean active) {}
-record FunPlanRequest(@NotBlank @Size(max = 160) String name, @NotBlank @Size(max = 250) String address, @NotNull LocalDateTime scheduledAt, @NotNull Long categoryId, @NotNull Long subcategoryId) {}
+record FunPlanRequest(@NotBlank @Size(max = 160) String name, @NotBlank @Size(max = 250) String address, @NotNull LocalDate scheduledAt, @NotNull Long categoryId, @NotNull Long subcategoryId) {}
 record FunPhotoDto(Long id, String url, String thumbnailUrl, int width, int height) {}
 record FunReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
 record FunReviewDto(Long id, String author, short rating, String comment, Instant updatedAt) {}
-record FunPlanDto(Long id, String name, String address, LocalDateTime scheduledAt, FunCategoryDto category, FunCategoryDto subcategory, String author, double rating, int reviewCount, FunPhotoDto coverPhoto, List<FunPhotoDto> photos, List<FunReviewDto> reviews, Instant createdAt, Instant updatedAt) {}
+record FunPlanDto(Long id, String name, String address, LocalDate scheduledAt, FunCategoryDto category, FunCategoryDto subcategory, String author, double rating, int reviewCount, FunPhotoDto coverPhoto, List<FunPhotoDto> photos, List<FunReviewDto> reviews, Instant createdAt, Instant updatedAt) {}
 
 @RestController
 @RequestMapping("/api/why-fun")
@@ -46,7 +46,7 @@ public class WhyFunApi {
 
  @GetMapping("/plans") Slice<FunPlanDto> listPlans(@RequestParam(required = false) Long categoryId, @RequestParam(required = false) Long subcategoryId, @RequestParam(required = false) String timeline, @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "12") int size) {
   int limit = Math.max(1, Math.min(size, 30));
-  LocalDateTime now = LocalDateTime.now();
+  LocalDate now = RosarioClock.today();
   Comparator<WhyFunVenue> order = "UPCOMING".equals(timeline) ? Comparator.comparing((WhyFunVenue value) -> value.scheduledAt, Comparator.nullsLast(Comparator.naturalOrder())) : "PAST".equals(timeline) ? Comparator.comparing((WhyFunVenue value) -> value.scheduledAt, Comparator.nullsLast(Comparator.reverseOrder())) : Comparator.comparing((WhyFunVenue value) -> value.createdAt).reversed();
   List<WhyFunVenue> values = venues.findAll().stream().filter(value -> categoryId == null || value.category.id.equals(categoryId)).filter(value -> subcategoryId == null || value.subcategory.id.equals(subcategoryId)).filter(value -> matchesTimeline(value, timeline, now)).sorted(order.thenComparing(value -> value.id, Comparator.reverseOrder())).toList();
   int offset = cursor == null ? 0 : Math.max(0, cursor.intValue());
@@ -76,7 +76,7 @@ public class WhyFunApi {
  private Map<Long, List<FunReviewDto>> reviewMap(List<Long> ids) { if (ids.isEmpty()) return Map.of(); return reviews.summariesByVenueIdIn(ids).stream().collect(Collectors.groupingBy(WhyFunReviewSummary::getVenueId, Collectors.mapping(WhyFunApi::review, Collectors.toList()))); }
  private void apply(WhyFunCategory category, FunCategoryRequest request, WhyFunCategory current) { WhyFunCategory parent = request.parentId() == null ? null : findCategory(request.parentId()); if (parent != null && parent.parent != null) throw badRequest("Las subcategorías solo pueden tener una categoría principal"); if (parent != null && parent.id.equals(category.id)) throw badRequest("Una categoría no puede ser su propia subcategoría"); String slug = slugFor(request.name()); if (slug.isBlank()) throw badRequest("El nombre debe incluir letras o números"); Optional<WhyFunCategory> duplicate = parent == null ? categories.findByParentIsNullAndSlug(slug) : categories.findByParentIdAndSlug(parent.id, slug); if (duplicate.isPresent() && (current == null || !duplicate.get().id.equals(current.id))) throw conflict("Ya existe una categoría con ese nombre"); category.parent = parent; category.name = request.name().trim(); category.slug = slug; category.icon = request.icon().trim(); category.active = request.active(); }
  private void apply(WhyFunVenue plan, FunPlanRequest request) { WhyFunCategory category = findCategory(request.categoryId()); WhyFunCategory subcategory = findCategory(request.subcategoryId()); if (!category.active || category.parent != null) throw badRequest("Elegí una categoría principal activa"); if (!subcategory.active || subcategory.parent == null || !subcategory.parent.id.equals(category.id)) throw badRequest("Elegí una subcategoría activa de la categoría seleccionada"); plan.name = request.name().trim(); plan.address = request.address().trim(); plan.scheduledAt = request.scheduledAt(); plan.category = category; plan.subcategory = subcategory; }
- private static boolean matchesTimeline(WhyFunVenue value, String timeline, LocalDateTime now) { return switch (timeline == null ? "ALL" : timeline) { case "UPCOMING" -> value.scheduledAt != null && !value.scheduledAt.isBefore(now); case "PAST" -> value.scheduledAt != null && value.scheduledAt.isBefore(now); case "UNSCHEDULED" -> value.scheduledAt == null; default -> true; }; }
+ private static boolean matchesTimeline(WhyFunVenue value, String timeline, LocalDate now) { return switch (timeline == null ? "ALL" : timeline) { case "UPCOMING" -> value.scheduledAt != null && !value.scheduledAt.isBefore(now); case "PAST" -> value.scheduledAt != null && value.scheduledAt.isBefore(now); case "UNSCHEDULED" -> value.scheduledAt == null; default -> true; }; }
  private static FunCategoryDto category(WhyFunCategory value) { return new FunCategoryDto(value.id, value.parent == null ? null : value.parent.id, value.name, value.slug, value.icon, value.active); }
  private static FunCategoryDto categorySummary(WhyFunCategory value) { return new FunCategoryDto(value.id, null, value.name, value.slug, value.icon, value.active); }
  private static FunPhotoDto photo(WhyFunVenuePhoto value) { return new FunPhotoDto(value.id, "/why-fun/photos/" + value.id, "/why-fun/photos/" + value.id + "?thumbnail=true", value.width, value.height); }

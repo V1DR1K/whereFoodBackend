@@ -13,11 +13,9 @@ import com.wherefood.domain.User;
 import com.wherefood.repo.Repositories.Films;
 import com.wherefood.repo.Repositories.FilmReviews;
 import com.wherefood.repo.Repositories.FilmPhotos;
-import com.wherefood.repo.Repositories.FilmViewPhotos;
 import com.wherefood.repo.Repositories.FilmViews;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,14 +38,14 @@ class FilmApiTest {
     Film film = new Film();
     film.id = 42L;
     when(films.findDetailedById(42L)).thenReturn(Optional.of(film));
-    when(views.findByFilmIdAndWatchedOnAndWatchedAt(42L, LocalDate.of(2026, 7, 19), LocalTime.of(20, 30))).thenReturn(Optional.empty());
+    when(views.findByFilmIdAndWatchedOn(42L, LocalDate.of(2026, 7, 19))).thenReturn(Optional.empty());
     FilmView[] stored = new FilmView[1];
     when(views.save(any(FilmView.class))).thenAnswer(invocation -> { FilmView value = invocation.getArgument(0); value.id = 88L; stored[0] = value; return value; });
-    when(views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(42L)).thenAnswer(invocation -> stored[0] == null ? List.of() : List.of(stored[0]));
+    when(views.findByFilmIdOrderByWatchedOnDescIdDesc(42L)).thenAnswer(invocation -> stored[0] == null ? List.of() : List.of(stored[0]));
 
     FilmViewDto result = new FilmApi(films, reviews, views, null, null, null, null, null).addView(
       42L,
-      new FilmViewRequest(LocalDate.of(2026, 7, 19), LocalTime.of(20, 30)),
+      new FilmViewRequest(LocalDate.of(2026, 7, 19)),
       tomas
     );
 
@@ -80,7 +78,7 @@ class FilmApiTest {
     FilmReviewDto result = new FilmApi(films, reviews, views, null, null, null, null, null).addReview(
       42L,
       88L,
-      new FilmReviewRequest((short) 5, "La volvería a ver", null, Map.of("story", (short) 4)),
+      new FilmReviewRequest((short) 5, "La volvería a ver", null, null, Map.of("story", (short) 4)),
       avril
     );
 
@@ -109,7 +107,7 @@ class FilmApiTest {
     FilmReviewDto result = new FilmApi(null, reviews, null, null, null, null, null, null).updateReview(
       42L,
       99L,
-      new FilmReviewRequest((short) 5, "Mejor de lo que recordaba", LocalDate.of(2026, 7, 18), Map.of("story", (short) 4)),
+      new FilmReviewRequest((short) 5, "Mejor de lo que recordaba", LocalDate.of(2026, 7, 18), null, Map.of("story", (short) 4)),
       author
     );
 
@@ -121,11 +119,11 @@ class FilmApiTest {
 
   @Test
   void listsFilmsWithoutAnyLocalOrViewPhoto() throws Exception {
-   Films films = mock(Films.class); FilmReviews reviews = mock(FilmReviews.class); FilmViews views = mock(FilmViews.class); FilmPhotos filmPhotos = mock(FilmPhotos.class); FilmViewPhotos viewPhotos = mock(FilmViewPhotos.class);
+    Films films = mock(Films.class); FilmReviews reviews = mock(FilmReviews.class); FilmViews views = mock(FilmViews.class); FilmPhotos filmPhotos = mock(FilmPhotos.class);
    User tomas = new User(); tomas.username = "tomas";
    Film film = new Film(); film.id = 42L; film.title = "Sin foto"; film.createdBy = tomas; film.createdAt = film.updatedAt = Instant.parse("2026-07-23T00:00:00Z");
-   when(films.findAll()).thenReturn(List.of(film)); when(reviews.findByFilmIdOrderByViewWatchedOnDescIdDesc(42L)).thenReturn(List.of()); when(views.findByFilmIdOrderByWatchedOnDescWatchedAtDescIdDesc(42L)).thenReturn(List.of()); when(filmPhotos.findByFilmId(42L)).thenReturn(Optional.empty());
-   MockMvc mvc = MockMvcBuilders.standaloneSetup(new FilmApi(films, reviews, views, null, filmPhotos, viewPhotos, null, null, null)).build();
+    when(films.findAll()).thenReturn(List.of(film)); when(reviews.findByFilmIdOrderByViewWatchedOnDescIdDesc(42L)).thenReturn(List.of()); when(views.findByFilmIdOrderByWatchedOnDescIdDesc(42L)).thenReturn(List.of()); when(filmPhotos.findByFilmId(42L)).thenReturn(Optional.empty());
+    MockMvc mvc = MockMvcBuilders.standaloneSetup(new FilmApi(films, reviews, views, null, filmPhotos, null, null, null)).build();
 
    mvc.perform(get("/api/films")).andExpect(status().isOk());
   }

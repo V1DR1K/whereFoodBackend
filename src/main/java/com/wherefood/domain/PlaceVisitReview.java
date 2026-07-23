@@ -14,13 +14,6 @@ public class PlaceVisitReview {
  @Column(length = 2000) public String comment;
  public Short taste;
  public Short price;
- public Short location;
- public Short heating;
- public Short bathrooms;
- public Short exterior;
- public Short seating;
- public Short service;
- public Short ambiance;
  public Instant createdAt;
  public Instant updatedAt;
 }

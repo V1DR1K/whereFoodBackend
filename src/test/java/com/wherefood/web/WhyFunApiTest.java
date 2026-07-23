@@ -10,18 +10,18 @@ import static org.mockito.Mockito.when;
 import com.wherefood.domain.*;
 import com.wherefood.repo.Repositories.*;
 import java.lang.reflect.Method;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class WhyFunApiTest {
  @Test
   void separatesUpcomingAndPastPlans() throws Exception {
-  Method matcher = WhyFunApi.class.getDeclaredMethod("matchesTimeline", WhyFunVenue.class, String.class, LocalDateTime.class);
+   Method matcher = WhyFunApi.class.getDeclaredMethod("matchesTimeline", WhyFunVenue.class, String.class, LocalDate.class);
   matcher.setAccessible(true);
   WhyFunVenue plan = new WhyFunVenue();
-  LocalDateTime now = LocalDateTime.of(2026, 7, 22, 18, 0);
-  plan.scheduledAt = now.plusHours(2);
+   LocalDate now = LocalDate.of(2026, 7, 22);
+   plan.scheduledAt = now.plusDays(1);
   assertTrue((Boolean) matcher.invoke(null, plan, "UPCOMING", now));
    assertFalse((Boolean) matcher.invoke(null, plan, "PAST", now));
   }

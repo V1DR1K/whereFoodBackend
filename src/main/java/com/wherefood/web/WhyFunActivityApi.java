@@ -19,11 +19,11 @@ record ActivityScheduleDto(DayOfWeek dayOfWeek, LocalTime opensAt, LocalTime clo
 record ActivityRequest(@NotBlank @Size(max = 160) String name, @NotBlank @Size(max = 250) String address, @NotNull Long categoryId, @NotNull Long subcategoryId, List<@Valid ActivityScheduleRequest> schedules) {}
 record ActivityProfilePhotoDto(Long id, String url, String thumbnailUrl, int width, int height, Instant createdAt) {}
 record ActivityDto(Long id, String name, String address, FunCategoryDto category, FunCategoryDto subcategory, List<ActivityScheduleDto> schedules, ActivityProfilePhotoDto profilePhoto, String createdBy, String updatedBy, Instant createdAt, Instant updatedAt) {}
-record ActivityVisitRequest(LocalDateTime scheduledAt) {}
+record ActivityVisitRequest(@NotNull LocalDate scheduledAt) {}
 record ActivityPhotoDto(Long id, String url, String thumbnailUrl, int width, int height, int position, String createdBy, Instant createdAt) {}
 record ActivityReviewRequest(@Min(1) @Max(5) short rating, @Size(max = 1000) String comment) {}
 record ActivityReviewDto(Long id, String author, String updatedBy, short rating, String comment, Instant createdAt, Instant updatedAt) {}
-record ActivityVisitDto(Long id, ActivityDto activity, LocalDateTime scheduledAt, String createdBy, String updatedBy, ActivityPhotoDto coverPhoto, List<ActivityPhotoDto> photos, List<ActivityReviewDto> reviews, Instant createdAt, Instant updatedAt) {}
+record ActivityVisitDto(Long id, ActivityDto activity, LocalDate scheduledAt, String createdBy, String updatedBy, ActivityPhotoDto coverPhoto, List<ActivityPhotoDto> photos, List<ActivityReviewDto> reviews, Instant createdAt, Instant updatedAt) {}
 
 /**
  * Active WhyFun contract: /why-fun/activities are reusable venues and

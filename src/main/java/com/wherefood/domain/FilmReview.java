@@ -14,6 +14,7 @@ public class FilmReview {
   @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "updated_by") public User updatedBy;
  @Column(nullable = false) public short rating;
  public String comment;
+ @Column(name = "favorite_character", length = 300) public String favoriteCharacter;
  @ElementCollection
  @CollectionTable(name = "film_review_metrics", joinColumns = @JoinColumn(name = "review_id"))
  @MapKeyColumn(name = "metric_key")
